@@ -14,6 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root {
     --navy: #0d1b2e;
@@ -120,6 +121,10 @@
   .install-banner { margin: 0 20px 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--navy-line); background: var(--navy-light); display:flex; gap:10px; align-items:flex-start; }
   .install-banner-text { font-size: 12.5px; color: #cbd3e0; line-height:1.5; flex:1; }
   .install-banner-close { background:none; border:none; color: var(--gray); cursor:pointer; padding:2px; }
+  .import-card { border: 1.5px dashed var(--navy-line); border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 18px; }
+  .import-status { font-size: 12px; color: var(--gray); margin-top: 8px; min-height: 16px; }
+  .spin { display:inline-block; width:12px; height:12px; border: 2px solid var(--navy-line); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   #recap-print { display: none; }
   @media print {
     body * { visibility: hidden; }
@@ -315,6 +320,8 @@ let state = {
   dribbling: emptyDribbling(),
   calOffset: 0,
   error: "",
+  ocrBusy: false,
+  ocrStatus: "",
 };
 function emptyShooting() {
   return { attempts: "", makes: "", swishes: "", spinRate: "", releaseTime: "", shotArc: "", shotForm: "", shotType: "", duration: "", intensity: "", label: "Shootaround", closeMakes: "", midMakes: "", longMakes: "" };
@@ -471,6 +478,52 @@ function requirePin(action) {
   if (entered === pin) action();
   else showToast("Wrong PIN");
 }
+window.handleScreenshotImport = async function (input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (typeof Tesseract === "undefined") {
+    showToast("OCR library failed to load — check your connection");
+    input.value = "";
+    return;
+  }
+  state.ocrBusy = true;
+  state.ocrStatus = "Reading screenshot… this can take up to 15 seconds";
+  render();
+  try {
+    const { data: { text } } = await Tesseract.recognize(file, "eng");
+    const flat = flattenOcrText(text);
+    const type = detectScreenshotType(flat);
+    if (!type) {
+      showToast("Couldn't recognize that screenshot — try a clearer photo or enter manually");
+    } else if (type === "shooting") {
+      const parsed = parseShootScreenshot(flat);
+      state.type = "shooting";
+      state.shooting = { ...state.shooting };
+      for (const key of ["attempts", "makes", "swishes", "spinRate", "releaseTime", "shotArc", "shotForm", "shotType", "duration", "intensity", "label"]) {
+        if (parsed[key] !== null && parsed[key] !== undefined) state.shooting[key] = parsed[key];
+      }
+      showToast("Detected a shooting session — review before logging");
+    } else {
+      const parsed = parseDribbleScreenshot(flat);
+      state.type = "dribbling";
+      state.dribbling = { ...state.dribbling };
+      if (parsed.drillName) state.dribbling.drillName = parsed.drillName;
+      if (parsed.points !== null) state.dribbling.points = parsed.points;
+      if (parsed.reps !== null) state.dribbling.reps = parsed.reps;
+      if (parsed.date) state.date = parsed.date;
+      if (parsed.time) state.time = parsed.time;
+      showToast("Detected a dribbling session — review before logging");
+    }
+  } catch (err) {
+    showToast("Couldn't read that screenshot — try again or enter manually");
+  } finally {
+    state.ocrBusy = false;
+    state.ocrStatus = "";
+    input.value = "";
+    render();
+  }
+};
+
 window.setPin = function () {
   const current = getPin();
   if (current) {
@@ -910,6 +963,77 @@ function trendRow(label, displayValue, current, previous, unit) {
   </div>`;
 }
 
+const MONTH_MAP = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+const KNOWN_DRILLS = ["Tight Handles", "Two-Ball Series", "Cone Weave", "Live Ball Combo"];
+
+function flattenOcrText(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function detectScreenshotType(flat) {
+  const hasShootingWords = /ATTEMPTS/i.test(flat) && /MAKES/i.test(flat);
+  const hasDribbleWords = /\bpts\b/i.test(flat) && /\breps\b/i.test(flat);
+  if (hasShootingWords) return "shooting";
+  if (hasDribbleWords) return "dribbling";
+  return null;
+}
+
+function numAfter(flat, label) {
+  const re = new RegExp(label + "\\D{0,12}?(\\d+(?:\\.\\d+)?)", "i");
+  const m = flat.match(re);
+  return m ? m[1] : null;
+}
+
+function parseShootScreenshot(flat) {
+  const out = {};
+  out.attempts = numAfter(flat, "ATTEMPTS");
+  out.makes = numAfter(flat, "MAKES");
+  // swishes: take the numeric match NOT immediately followed by a %
+  const swishMatches = [...flat.matchAll(/SWISHES\D{0,10}?(\d+)\s*(%)?/gi)];
+  const swishNonPct = swishMatches.find((m) => !m[2]);
+  out.swishes = swishNonPct ? swishNonPct[1] : (swishMatches[0] ? swishMatches[0][1] : null);
+  const spinM = flat.match(/SPIN RATE\D{0,10}?(\d+)\s*%/i); out.spinRate = spinM ? spinM[1] : null;
+  const relM = flat.match(/RELEASE TIME\D{0,10}?(\d+)\s*%/i); out.releaseTime = relM ? relM[1] : null;
+  const arcM = flat.match(/SHOT ARC\D{0,10}?(\d+)\s*%/i); out.shotArc = arcM ? arcM[1] : null;
+  const formM = flat.match(/SHOT FORM\D{0,20}?(Consistent|Inconsistent)/i); out.shotForm = formM ? formM[1] : null;
+  const typeM = flat.match(/SHOT TYPE\D{0,10}?(\d+)\s*%\s*relaxed/i); out.shotType = typeM ? `${typeM[1]}% relaxed` : null;
+  const durM = flat.match(/DURATION\D{0,10}?(\d+)\s*min/i); out.duration = durM ? durM[1] : null;
+  const intM = flat.match(/INTENSITY\D{0,10}?(\d+)\s*%/i); out.intensity = intM ? intM[1] : null;
+  const titleM = flat.match(/\b(SHOOTAROUND|SHOOT AROUND)\b/i);
+  out.label = titleM ? "Shootaround" : "Shootaround";
+  return out;
+}
+
+function parseDribbleScreenshot(flat) {
+  const out = {};
+  let drillName = null;
+  for (const d of KNOWN_DRILLS) {
+    if (flat.toLowerCase().includes(d.toLowerCase())) { drillName = d; break; }
+  }
+  if (!drillName) {
+    const m = flat.match(/([A-Za-z][A-Za-z '\-]{2,30}?)\s+Basketball\b/i);
+    if (m) drillName = m[1].trim();
+  }
+  out.drillName = drillName;
+  const ptsM = flat.match(/(\d+)\s*pts/i); out.points = ptsM ? ptsM[1] : null;
+  const repsM = flat.match(/(\d+)\s*reps/i); out.reps = repsM ? repsM[1] : null;
+  const dtM = flat.match(/(\w{3}),?\s*(\w{3})\s+(\d{1,2}),\s*(\d{4})\s*(?:at)?\s*(\d{1,2}):(\d{2})\s*([AP]M)/i);
+  if (dtM) {
+    const monthIdx = MONTH_MAP[dtM[2].toLowerCase().slice(0, 3)];
+    if (monthIdx !== undefined) {
+      const year = dtM[4], day = dtM[3].padStart(2, "0"), month = String(monthIdx + 1).padStart(2, "0");
+      let hour = parseInt(dtM[5], 10);
+      const minute = dtM[6];
+      const ampm = dtM[7].toUpperCase();
+      if (ampm === "PM" && hour !== 12) hour += 12;
+      if (ampm === "AM" && hour === 12) hour = 0;
+      out.date = `${year}-${month}-${day}`;
+      out.time = `${String(hour).padStart(2, "0")}:${minute}`;
+    }
+  }
+  return out;
+}
+
 function fieldHtml(label, inputHtml, required) {
   return `<div class="field"><label>${label}${required ? " *" : ""}</label>${inputHtml}</div>`;
 }
@@ -917,6 +1041,13 @@ function fieldHtml(label, inputHtml, required) {
 function renderLogForm() {
   const s = state.shooting, dr = state.dribbling;
   let html = `<div style="padding:0 20px">`;
+
+  html += `<div class="import-card">
+    <input type="file" id="f-screenshot" accept="image/*" style="display:none" onchange="handleScreenshotImport(this)" ${state.ocrBusy ? "disabled" : ""} />
+    <button class="btn-ghost" ${state.ocrBusy ? "disabled" : ""} onclick="document.getElementById('f-screenshot').click()">📷 Import from Screenshot</button>
+    <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : "Works with DribbleUp shooting &amp; session-recap screenshots"}</div>
+  </div>`;
+
   html += `<div class="row" style="margin-bottom:18px">
     <button class="seg-btn ${state.type === "shooting" ? "active" : ""}" onclick="setType('shooting')">Shooting</button>
     <button class="seg-btn ${state.type === "dribbling" ? "active" : ""}" onclick="setType('dribbling')">Dribbling</button>
