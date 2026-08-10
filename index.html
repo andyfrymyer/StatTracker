@@ -725,6 +725,12 @@ window.printRecap = function () {
       <div class="rp-row"><span>Reps this week</span><strong>${d.thisWeek.reps}</strong></div>
       <div class="rp-row"><span>Minutes this week</span><strong>${d.thisWeek.dribbleMin} / ${state.goals.dribbleMinutes} goal</strong></div>
     </div>
+    ${d.mechanics.length || d.latestForm ? `
+    <div class="rp-section">
+      <div class="rp-label">Shot Mechanics (latest session)</div>
+      ${d.mechanics.map((m) => `<div class="rp-row"><span>${m.label}</span><strong>${m.latest}%${m.priorAvg !== null ? ` (prev avg ${m.priorAvg}%)` : ""}</strong></div>`).join("")}
+      ${d.latestForm ? `<div class="rp-row"><span>Shot form</span><strong>${d.latestForm.shotForm}</strong></div>` : ""}
+    </div>` : ""}
     <div class="rp-section">
       <div class="rp-label">Streaks & Bests</div>
       <div class="rp-row"><span>Day streak</span><strong>${d.dayStreak} days</strong></div>
@@ -869,7 +875,36 @@ function computeDerived() {
   const lastMonthKey = prevMonthKey(thisMonthKey);
   const lastMonth = monthlyList.find((m) => m.month === lastMonthKey) || { attempts: 0, makes: 0, points: 0, reps: 0, dribbleMin: 0, shootingPct: null };
 
-  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey };
+  // --- Shot mechanics (spin rate, release time, shot arc, intensity) ---
+  // These come from the DribbleUp screen but weren't surfaced anywhere before.
+  // Show the latest value plus how it compares to the average of prior sessions.
+  const mechKeys = ["spinRate", "releaseTime", "shotArc", "intensity"];
+  const mechLabels = { spinRate: "Spin rate", releaseTime: "Release time", shotArc: "Shot arc", intensity: "Intensity" };
+  const shootingByDate = [...shootingSessions].sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
+  const mechanics = [];
+  for (const key of mechKeys) {
+    const withVal = shootingByDate.filter((s) => s[key] !== null && s[key] !== undefined);
+    if (withVal.length === 0) continue;
+    const latest = withVal[withVal.length - 1];
+    const priors = withVal.slice(0, -1);
+    const priorAvg = priors.length ? Math.round(priors.reduce((a, s) => a + Number(s[key]), 0) / priors.length) : null;
+    mechanics.push({
+      key,
+      label: mechLabels[key],
+      latest: Number(latest[key]),
+      priorAvg,
+      count: withVal.length,
+    });
+  }
+  const formCounts = { Consistent: 0, Inconsistent: 0 };
+  for (const s of shootingSessions) {
+    const f = (s.shotForm || "").toLowerCase();
+    if (f === "consistent") formCounts.Consistent++;
+    else if (f === "inconsistent") formCounts.Inconsistent++;
+  }
+  const latestForm = shootingByDate.filter((s) => s.shotForm).slice(-1)[0];
+
+  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm };
 }
 
 /* ---------- render ---------- */
@@ -1082,6 +1117,43 @@ function renderDashboard() {
     </div>
     <div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>`;
   }
+  if (d.mechanics.length > 0 || d.latestForm) {
+    html += `<div class="card">
+      <div class="chart-title" style="padding:0 0 4px">Shot Mechanics</div>
+      <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Latest session vs. average of previous sessions</div>`;
+    for (const m of d.mechanics) {
+      let delta = `<span class="trend-delta flat">—</span>`;
+      if (m.priorAvg !== null) {
+        const diff = m.latest - m.priorAvg;
+        // Higher is better for spin rate, shot arc, and intensity. Release
+        // time is a "% in range" figure on the DribbleUp screen, so higher
+        // is better there too.
+        if (diff > 0) delta = `<span class="trend-delta up">▲ ${diff}</span>`;
+        else if (diff < 0) delta = `<span class="trend-delta down">▼ ${Math.abs(diff)}</span>`;
+        else delta = `<span class="trend-delta flat">— 0</span>`;
+      }
+      html += `<div class="trend-row">
+        <span>
+          <span class="trend-label">${m.label}</span>
+          <span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">${m.priorAvg !== null ? `prev avg ${m.priorAvg}%` : "first session"}</span>
+        </span>
+        <span><span class="trend-value">${m.latest}%</span>${delta}</span>
+      </div>`;
+    }
+    if (d.latestForm) {
+      const total = d.formCounts.Consistent + d.formCounts.Inconsistent;
+      const consistentPct = total > 0 ? Math.round((d.formCounts.Consistent / total) * 100) : 0;
+      html += `<div class="trend-row">
+        <span>
+          <span class="trend-label">Shot form</span>
+          <span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">consistent in ${d.formCounts.Consistent} of ${total} session${total === 1 ? "" : "s"} (${consistentPct}%)</span>
+        </span>
+        <span class="trend-value" style="color:${(d.latestForm.shotForm || "").toLowerCase() === "consistent" ? "var(--green)" : "#ff8a8a"}">${d.latestForm.shotForm}</span>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
   if (d.weekly.some((w) => w.hasDribbling)) {
     html += `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Dribbling Points by Week</div><canvas id="chartPoints" height="180"></canvas></div>`;
   }
@@ -1129,8 +1201,19 @@ function renderDashboard() {
     const sub = s.type === "shooting"
       ? `${s.makes}/${s.attempts} (${s.attempts > 0 ? Math.round((s.makes / s.attempts) * 100) : 0}%)${s.swishes != null && s.attempts > 0 ? ` · ${Math.round((s.swishes / s.attempts) * 1000) / 10}% swish` : ""}`
       : `${s.points} pts · ${s.reps} reps`;
+    let mechLine = "";
+    if (s.type === "shooting") {
+      const bits = [];
+      if (s.spinRate != null) bits.push(`spin ${s.spinRate}%`);
+      if (s.releaseTime != null) bits.push(`release ${s.releaseTime}%`);
+      if (s.shotArc != null) bits.push(`arc ${s.shotArc}%`);
+      if (s.intensity != null) bits.push(`intensity ${s.intensity}%`);
+      if (s.duration != null) bits.push(`${s.duration} min`);
+      if (s.shotForm) bits.push(s.shotForm.toLowerCase());
+      if (bits.length) mechLine = `<div style="font-size:11px;color:var(--gray);opacity:0.75;margin-top:3px">${bits.join(" · ")}</div>`;
+    }
     html += `<div class="session-row">
-      <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div></div>
+      <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}</div>
       <button class="del-btn" onclick="handleDelete('${s.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
     </div>`;
   }
