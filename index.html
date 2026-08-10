@@ -637,75 +637,101 @@ window.copyOcrRaw = function () {
 };
 
 window.handleScreenshotImport = async function (input) {
-  const file = input.files && input.files[0];
-  if (!file) return;
+  const files = input.files ? Array.from(input.files) : [];
+  if (!files.length) return;
   if (typeof Tesseract === "undefined") {
     showToast("OCR library failed to load — check your connection");
     input.value = "";
     return;
   }
   state.ocrBusy = true;
-  state.ocrStatus = "Reading screenshot… this can take up to 15 seconds";
   render();
+
+  const summary = { shooting: 0, zones: 0, dribbling: 0, unknown: 0 };
+  let sawShooting = false, sawZones = false, swapped = false, lowConf = false;
+  const rawTexts = [];
+
   try {
-    const { data: { text } } = await Tesseract.recognize(file, "eng");
-    const flat = flattenOcrText(text);
-    state.lastOcrRaw = flat;
-    const type = detectScreenshotType(flat);
-    if (!type) {
-      showToast("Couldn't recognize that screenshot — try a clearer photo or enter manually");
-    } else if (type === "zones") {
-      const parsed = parseZoneScreenshot(flat);
-      state.type = "shooting";
-      state.shooting = { ...state.shooting };
-      const zoneKeys = ["closeAttempts", "closeMakes", "closeSwishes", "midAttempts", "midMakes", "midSwishes", "longAttempts", "longMakes", "longSwishes"];
-      const filled = [];
-      for (const key of zoneKeys) {
-        if (parsed[key] !== undefined) { state.shooting[key] = parsed[key]; filled.push(key); }
+    for (let i = 0; i < files.length; i++) {
+      state.ocrStatus = files.length > 1
+        ? `Reading screenshot ${i + 1} of ${files.length}…`
+        : "Reading screenshot… this can take up to 15 seconds";
+      render();
+
+      let flat;
+      try {
+        const { data: { text } } = await Tesseract.recognize(files[i], "eng");
+        flat = flattenOcrText(text);
+      } catch (err) {
+        summary.unknown++;
+        continue;
       }
-      // If total attempts hasn't been entered yet, seed it from the zone totals.
-      if (!state.shooting.attempts && parsed._zoneTotalAttempts) {
-        state.shooting.attempts = parsed._zoneTotalAttempts;
-        filled.push("attempts");
-      }
-      state.shooting._ocrFilled = [...(state.shooting._ocrFilled || []), ...filled.filter((k) => k !== "attempts")];
-      state.shooting._ocrDerived = [...(state.shooting._ocrDerived || []), ...filled.filter((k) => k.endsWith("Makes") || k.endsWith("Swishes"))];
-      showToast(filled.length
-        ? `Read zone breakdown — ${filled.length} field${filled.length === 1 ? "" : "s"} filled. Review before logging.`
-        : "Couldn't read the zone breakdown — enter manually");
-    } else if (type === "shooting") {
-      const parsed = parseShootScreenshot(flat);
-      state.type = "shooting";
-      state.shooting = { ...state.shooting };
-      const filled = [];
-      for (const key of ["attempts", "makes", "swishes", "spinRate", "releaseTime", "shotArc", "shotForm", "shotType", "duration", "intensity", "label"]) {
-        if (parsed[key] !== null && parsed[key] !== undefined) {
-          state.shooting[key] = parsed[key];
-          if (key !== "label") filled.push(key);
+      rawTexts.push(flat);
+      const type = detectScreenshotType(flat);
+
+      if (type === "zones") {
+        const parsed = parseZoneScreenshot(flat);
+        state.type = "shooting";
+        const zoneKeys = ["closeAttempts", "closeMakes", "closeSwishes", "midAttempts", "midMakes", "midSwishes", "longAttempts", "longMakes", "longSwishes"];
+        const filled = [];
+        for (const key of zoneKeys) {
+          if (parsed[key] !== undefined) { state.shooting[key] = parsed[key]; filled.push(key); }
         }
+        if (!state.shooting.attempts && parsed._zoneTotalAttempts) state.shooting.attempts = parsed._zoneTotalAttempts;
+        state.shooting._ocrFilled = [...new Set([...(state.shooting._ocrFilled || []), ...filled.filter((k) => k.endsWith("Attempts"))])];
+        state.shooting._ocrDerived = [...new Set([...(state.shooting._ocrDerived || []), ...filled.filter((k) => !k.endsWith("Attempts"))])];
+        if (filled.length) { summary.zones++; sawZones = true; }
+        else summary.unknown++;
+      } else if (type === "shooting") {
+        const parsed = parseShootScreenshot(flat);
+        state.type = "shooting";
+        const filled = [];
+        for (const key of ["attempts", "makes", "swishes", "spinRate", "releaseTime", "shotArc", "shotForm", "shotType", "duration", "intensity", "label"]) {
+          if (parsed[key] !== null && parsed[key] !== undefined) {
+            state.shooting[key] = parsed[key];
+            if (key !== "label") filled.push(key);
+          }
+        }
+        const derivedList = parsed._derived || [];
+        state.shooting._ocrFilled = [...new Set([...(state.shooting._ocrFilled || []), ...filled.filter((k) => !derivedList.includes(k))])];
+        state.shooting._ocrDerived = [...new Set([...(state.shooting._ocrDerived || []), ...derivedList])];
+        if (parsed._swapped) swapped = true;
+        if (parsed.swishes === null) lowConf = true;
+        summary.shooting++; sawShooting = true;
+      } else if (type === "dribbling") {
+        const parsed = parseDribbleScreenshot(flat);
+        state.type = "dribbling";
+        if (parsed.drillName) state.dribbling.drillName = parsed.drillName;
+        if (parsed.points !== null) state.dribbling.points = parsed.points;
+        if (parsed.reps !== null) state.dribbling.reps = parsed.reps;
+        if (parsed.date) state.date = parsed.date;
+        if (parsed.time) state.time = parsed.time;
+        summary.dribbling++;
+      } else {
+        summary.unknown++;
       }
-      const derivedList = parsed._derived || [];
-      state.shooting._ocrFilled = filled.filter((k) => !derivedList.includes(k));
-      state.shooting._ocrDerived = derivedList;
-      state.shooting._ocrLowConfidence = parsed.swishes === null;
-      state.shooting._ocrSwapped = !!parsed._swapped;
-      const readCount = filled.length;
-      showToast(parsed._swapped
-        ? "Attempts/Makes looked swapped and were auto-corrected — please double-check!"
-        : `Read ${readCount} field${readCount === 1 ? "" : "s"} from the screenshot — review before logging`);
-    } else {
-      const parsed = parseDribbleScreenshot(flat);
-      state.type = "dribbling";
-      state.dribbling = { ...state.dribbling };
-      if (parsed.drillName) state.dribbling.drillName = parsed.drillName;
-      if (parsed.points !== null) state.dribbling.points = parsed.points;
-      if (parsed.reps !== null) state.dribbling.reps = parsed.reps;
-      if (parsed.date) state.date = parsed.date;
-      if (parsed.time) state.time = parsed.time;
-      showToast("Detected a dribbling session — review before logging");
     }
-  } catch (err) {
-    showToast("Couldn't read that screenshot — try again or enter manually");
+
+    // A dribbling card and a shooting screen are different sessions, so if both
+    // turned up we can't merge them — tell the user rather than silently mixing.
+    if (summary.dribbling > 0 && (sawShooting || sawZones)) {
+      showToast("Mixed shooting and dribbling screenshots — log them as separate sessions");
+    } else if (summary.unknown === files.length) {
+      showToast("Couldn't recognize those screenshots — try clearer photos or enter manually");
+    } else {
+      const parts = [];
+      if (sawShooting) parts.push("session stats");
+      if (sawZones) parts.push("zone breakdown");
+      if (summary.dribbling) parts.push("dribbling session");
+      const skipped = summary.unknown ? ` (${summary.unknown} not recognized)` : "";
+      showToast(swapped
+        ? `Imported ${parts.join(" + ")} — attempts/makes looked swapped, double-check!`
+        : `Imported ${parts.join(" + ")}${skipped} — review before logging`);
+    }
+
+    state.shooting._ocrLowConfidence = lowConf;
+    state.shooting._ocrSwapped = swapped;
+    state.lastOcrRaw = rawTexts.join("\n\n----- next screenshot -----\n\n");
   } finally {
     state.ocrBusy = false;
     state.ocrStatus = "";
@@ -1559,9 +1585,9 @@ function renderLogForm() {
   let html = `<div style="padding:0 20px">`;
 
   html += `<div class="import-card">
-    <input type="file" id="f-screenshot" accept="image/*" style="display:none" onchange="handleScreenshotImport(this)" ${state.ocrBusy ? "disabled" : ""} />
+    <input type="file" id="f-screenshot" accept="image/*" multiple style="display:none" onchange="handleScreenshotImport(this)" ${state.ocrBusy ? "disabled" : ""} />
     <button class="btn-ghost" ${state.ocrBusy ? "disabled" : ""} onclick="document.getElementById('f-screenshot').click()">📷 Import from Screenshot</button>
-    <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : "Works with DribbleUp shooting &amp; session-recap screenshots"}</div>
+    <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : "Pick one or both DribbleUp screens at once — stats and &quot;Shots by distance&quot;"}</div>
     ${state.lastOcrRaw ? `
       <button class="btn-link" style="margin-top:10px" onclick="toggleOcrDebug()">${state.showOcrDebug ? "Hide" : "Show"} raw OCR text (debug)</button>
       ${state.showOcrDebug ? `
