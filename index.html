@@ -893,7 +893,7 @@ function renderSyncCard() {
     </div>
     <div class="field" style="margin-bottom:12px">
       <label>Sync PIN (if set on server)</label>
-      <input class="input" id="f-api-pin" type="text" placeholder="optional" value="${state.apiPin}" />
+      <input class="input" id="f-api-pin" type="password" autocomplete="off" placeholder="optional" value="${state.apiPin}" />
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn-primary" onclick="saveApiSettings()">Save & Connect</button>
