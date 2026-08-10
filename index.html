@@ -466,7 +466,14 @@ function showToast(msg) {
 /* ---------- actions (exposed to window for inline handlers) ---------- */
 window.setTab = function (tab) { state.tab = tab; render(); };
 window.setType = function (type) { state.type = type; render(); };
-window.updateShooting = function (key, val) { state.shooting[key] = val; render(); };
+window.updateShooting = function (key, val) {
+  state.shooting[key] = val;
+  if (["attempts", "makes", "swishes"].includes(key)) {
+    state.shooting._ocrLowConfidence = false;
+    state.shooting._ocrSwapped = false;
+  }
+  render();
+};
 window.updateDribbling = function (key, val) { state.dribbling[key] = val; render(); };
 window.updateDate = function (val) { state.date = val; };
 window.updateTime = function (val) { state.time = val; };
@@ -613,8 +620,12 @@ window.handleScreenshotImport = async function (input) {
       for (const key of ["attempts", "makes", "swishes", "spinRate", "releaseTime", "shotArc", "shotForm", "shotType", "duration", "intensity", "label"]) {
         if (parsed[key] !== null && parsed[key] !== undefined) state.shooting[key] = parsed[key];
       }
+      state.shooting._ocrLowConfidence = parsed.swishes === null;
+      state.shooting._ocrSwapped = !!parsed._swapped;
       showToast(parsed._swapped
         ? "Detected shooting session — attempts/makes looked swapped, auto-corrected. Please double-check!"
+        : parsed.swishes === null
+        ? "Detected shooting session, but couldn't read all 3 stat numbers clearly — please verify against the screenshot!"
         : "Detected a shooting session — review before logging");
     } else {
       const parsed = parseDribbleScreenshot(flat);
@@ -1240,6 +1251,11 @@ function renderLogForm() {
 
   if (state.type === "shooting") {
     html += fieldHtml("Session name", `<input class="input" id="f-shooting-label" type="text" value="${s.label}" placeholder="Shootaround" oninput="updateShooting('label', this.value)" />`);
+    if (s._ocrLowConfidence || s._ocrSwapped) {
+      html += `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#ffd9b3;line-height:1.5">
+        ⚠️ ${s._ocrSwapped ? "Attempts/Makes looked swapped and were auto-corrected." : "Couldn't clearly read all 3 numbers (Attempts/Makes/Swishes) from the screenshot."} Please check these against the actual screenshot before saving.
+      </div>`;
+    }
     html += `<div class="row">
       ${fieldHtml("Attempts", `<input class="input" id="f-shooting-attempts" type="number" min="0" value="${s.attempts}" oninput="updateShooting('attempts', this.value)" />`, true)}
       ${fieldHtml("Makes", `<input class="input" id="f-shooting-makes" type="number" min="0" value="${s.makes}" oninput="updateShooting('makes', this.value)" />`, true)}
