@@ -613,7 +613,9 @@ window.handleScreenshotImport = async function (input) {
       for (const key of ["attempts", "makes", "swishes", "spinRate", "releaseTime", "shotArc", "shotForm", "shotType", "duration", "intensity", "label"]) {
         if (parsed[key] !== null && parsed[key] !== undefined) state.shooting[key] = parsed[key];
       }
-      showToast("Detected a shooting session — review before logging");
+      showToast(parsed._swapped
+        ? "Detected shooting session — attempts/makes looked swapped, auto-corrected. Please double-check!"
+        : "Detected a shooting session — review before logging");
     } else {
       const parsed = parseDribbleScreenshot(flat);
       state.type = "dribbling";
@@ -1135,18 +1137,47 @@ function numAfter(flat, label) {
 
 function parseShootScreenshot(flat) {
   const out = {};
-  out.attempts = numAfter(flat, "ATTEMPTS");
-  out.makes = numAfter(flat, "MAKES");
-  // swishes: take the numeric match NOT immediately followed by a %
-  const swishMatches = [...flat.matchAll(/SWISHES\D{0,10}?(\d+)\s*(%)?/gi)];
-  const swishNonPct = swishMatches.find((m) => !m[2]);
-  out.swishes = swishNonPct ? swishNonPct[1] : (swishMatches[0] ? swishMatches[0][1] : null);
+
+  // The ATTEMPTS/MAKES/SWISHES trio sit together as a block in the source
+  // image, but OCR reading order sometimes interleaves the "SHOOTING XX%"
+  // circle text or the duplicate "Swishes XX%" line in between them. Those
+  // interlopers are always followed by a % sign; the real count values never
+  // are. So: isolate the block starting at ATTEMPTS, then pull out only the
+  // numbers NOT followed by a % — those are attempts, makes, swishes in order.
+  const attemptsIdx = flat.search(/ATTEMPTS/i);
+  if (attemptsIdx !== -1) {
+    const stopMatch = flat.slice(attemptsIdx).match(/SPIN RATE|RELEASE TIME|SHOT ARC|SHOT FORM|SHOT TYPE|DURATION|TIME ACTIVE|INTENSITY/i);
+    const block = stopMatch ? flat.slice(attemptsIdx, attemptsIdx + stopMatch.index) : flat.slice(attemptsIdx);
+    // Strip any "<number>%" tokens entirely first (avoids regex backtracking
+    // leaving stray partial-digit matches, e.g. "4" out of "40%"), then the
+    // remaining digit runs are the real count values, in order.
+    const blockNoPct = block.replace(/\d+\s*%/g, " ");
+    const counts = [...blockNoPct.matchAll(/\d+/g)].map((m) => m[0]);
+    out.attempts = counts[0] !== undefined ? counts[0] : null;
+    out.makes = counts[1] !== undefined ? counts[1] : null;
+    out.swishes = counts[2] !== undefined ? counts[2] : null;
+  } else {
+    out.attempts = numAfter(flat, "ATTEMPTS");
+    out.makes = numAfter(flat, "MAKES");
+    const swishMatches = [...flat.matchAll(/SWISHES\D{0,10}?(\d+)\s*(%)?/gi)];
+    const swishNonPct = swishMatches.find((m) => !m[2]);
+    out.swishes = swishNonPct ? swishNonPct[1] : (swishMatches[0] ? swishMatches[0][1] : null);
+  }
+
+  // Belt-and-suspenders: makes can never exceed attempts.
+  if (out.attempts !== null && out.makes !== null && Number(out.makes) > Number(out.attempts)) {
+    const tmp = out.attempts;
+    out.attempts = out.makes;
+    out.makes = tmp;
+    out._swapped = true;
+  }
+
   const spinM = flat.match(/SPIN RATE\D{0,10}?(\d+)\s*%/i); out.spinRate = spinM ? spinM[1] : null;
   const relM = flat.match(/RELEASE TIME\D{0,10}?(\d+)\s*%/i); out.releaseTime = relM ? relM[1] : null;
   const arcM = flat.match(/SHOT ARC\D{0,10}?(\d+)\s*%/i); out.shotArc = arcM ? arcM[1] : null;
   const formM = flat.match(/SHOT FORM\D{0,20}?(Consistent|Inconsistent)/i); out.shotForm = formM ? formM[1] : null;
   const typeM = flat.match(/SHOT TYPE\D{0,10}?(\d+)\s*%\s*relaxed/i); out.shotType = typeM ? `${typeM[1]}% relaxed` : null;
-  const durM = flat.match(/DURATION\D{0,10}?(\d+)\s*min/i); out.duration = durM ? durM[1] : null;
+  const durM = flat.match(/(?:DURATION|TIME ACTIVE)\D{0,10}?(\d+)\s*min/i); out.duration = durM ? durM[1] : null;
   const intM = flat.match(/INTENSITY\D{0,10}?(\d+)\s*%/i); out.intensity = intM ? intM[1] : null;
   const titleM = flat.match(/\b(SHOOTAROUND|SHOOT AROUND)\b/i);
   out.label = titleM ? "Shootaround" : "Shootaround";
