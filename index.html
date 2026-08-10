@@ -123,6 +123,14 @@
   .install-banner-close { background:none; border:none; color: var(--gray); cursor:pointer; padding:2px; }
   .import-card { border: 1.5px dashed var(--navy-line); border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 18px; }
   .import-status { font-size: 12px; color: var(--gray); margin-top: 8px; min-height: 16px; }
+  .input.ocr-read { border-color: var(--green); box-shadow: inset 0 0 0 1px rgba(95,208,165,0.25); }
+  .input.ocr-derived { border-color: #d9a441; box-shadow: inset 0 0 0 1px rgba(217,164,65,0.25); }
+  .field-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; vertical-align: 1px; }
+  .field-tag.read { background: rgba(95,208,165,0.18); color: var(--green); }
+  .field-tag.derived { background: rgba(217,164,65,0.18); color: #d9a441; }
+  .ocr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--gray); margin-bottom:14px; padding: 10px 12px; background: var(--navy-light); border:1px solid var(--navy-line); border-radius:10px; }
+  .ocr-legend span { display:inline-flex; align-items:center; gap:5px; }
+  .legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
   .spin { display:inline-block; width:12px; height:12px; border: 2px solid var(--navy-line); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .sync-pill { display:inline-flex; align-items:center; gap:5px; font-size:11px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--navy-line); color: var(--gray); }
@@ -470,6 +478,10 @@ window.setTab = function (tab) { state.tab = tab; render(); };
 window.setType = function (type) { state.type = type; render(); };
 window.updateShooting = function (key, val) {
   state.shooting[key] = val;
+  // Once the user edits a field it's their value, not the screenshot's — drop
+  // the scanned/calc'd marker for that field specifically.
+  if (state.shooting._ocrFilled) state.shooting._ocrFilled = state.shooting._ocrFilled.filter((k) => k !== key);
+  if (state.shooting._ocrDerived) state.shooting._ocrDerived = state.shooting._ocrDerived.filter((k) => k !== key);
   if (["attempts", "makes", "swishes"].includes(key)) {
     state.shooting._ocrLowConfidence = false;
     state.shooting._ocrSwapped = false;
@@ -637,16 +649,22 @@ window.handleScreenshotImport = async function (input) {
       const parsed = parseShootScreenshot(flat);
       state.type = "shooting";
       state.shooting = { ...state.shooting };
+      const filled = [];
       for (const key of ["attempts", "makes", "swishes", "spinRate", "releaseTime", "shotArc", "shotForm", "shotType", "duration", "intensity", "label"]) {
-        if (parsed[key] !== null && parsed[key] !== undefined) state.shooting[key] = parsed[key];
+        if (parsed[key] !== null && parsed[key] !== undefined) {
+          state.shooting[key] = parsed[key];
+          if (key !== "label") filled.push(key);
+        }
       }
+      const derivedList = parsed._derived || [];
+      state.shooting._ocrFilled = filled.filter((k) => !derivedList.includes(k));
+      state.shooting._ocrDerived = derivedList;
       state.shooting._ocrLowConfidence = parsed.swishes === null;
       state.shooting._ocrSwapped = !!parsed._swapped;
+      const readCount = filled.length;
       showToast(parsed._swapped
-        ? "Detected shooting session — attempts/makes looked swapped, auto-corrected. Please double-check!"
-        : parsed.swishes === null
-        ? "Detected shooting session, but couldn't read all 3 stat numbers clearly — please verify against the screenshot!"
-        : "Detected a shooting session — review before logging");
+        ? "Attempts/Makes looked swapped and were auto-corrected — please double-check!"
+        : `Read ${readCount} field${readCount === 1 ? "" : "s"} from the screenshot — review before logging`);
     } else {
       const parsed = parseDribbleScreenshot(flat);
       state.type = "dribbling";
@@ -1168,6 +1186,9 @@ function numAfter(flat, label) {
 
 function parseShootScreenshot(flat) {
   const out = {};
+  // Tracks which fields were calculated rather than read directly off the
+  // image, so the UI can show the user how much to trust each value.
+  const derived = new Set();
 
   // OCR on this screen is unreliable for the big stylized numbers in the stats
   // block — they're frequently dropped entirely, and labels often get read as a
@@ -1209,6 +1230,7 @@ function parseShootScreenshot(flat) {
     if (makesNum === null || makesNum > Number(out.attempts) || Math.abs(makesNum - expected) > Math.max(5, expected * 0.2)) {
       out.makes = String(expected);
       out._recovered = true;
+      derived.add("makes");
     }
   }
 
@@ -1218,6 +1240,7 @@ function parseShootScreenshot(flat) {
     if (swishPctM) {
       out.swishes = String(Math.round((Number(out.attempts) * Number(swishPctM[1])) / 100));
       out._recovered = true;
+      derived.add("swishes");
     }
   }
   if (out.swishes === undefined) out.swishes = null;
@@ -1255,6 +1278,7 @@ function parseShootScreenshot(flat) {
   const formM = flat.match(/\b(Inconsistent|Consistent)\b/i); out.shotForm = formM ? formM[1] : null;
   const typeM = flat.match(/(\d+)\s*%\s*relaxed/i); out.shotType = typeM ? `${typeM[1]}% relaxed` : null;
   out.label = "Shootaround";
+  out._derived = Array.from(derived);
   return out;
 }
 
@@ -1286,6 +1310,19 @@ function parseDribbleScreenshot(flat) {
     }
   }
   return out;
+}
+
+// Returns the CSS class marking whether a field was read directly from the
+// screenshot, calculated from other values, or left alone.
+function ocrClass(s, key) {
+  if (s._ocrDerived && s._ocrDerived.includes(key)) return " ocr-derived";
+  if (s._ocrFilled && s._ocrFilled.includes(key)) return " ocr-read";
+  return "";
+}
+function ocrTag(s, key) {
+  if (s._ocrDerived && s._ocrDerived.includes(key)) return `<span class="field-tag derived">calc'd</span>`;
+  if (s._ocrFilled && s._ocrFilled.includes(key)) return `<span class="field-tag read">scanned</span>`;
+  return "";
 }
 
 function fieldHtml(label, inputHtml, required) {
@@ -1322,20 +1359,27 @@ function renderLogForm() {
 
   if (state.type === "shooting") {
     html += fieldHtml("Session name", `<input class="input" id="f-shooting-label" type="text" value="${s.label}" placeholder="Shootaround" oninput="updateShooting('label', this.value)" />`);
+    if ((s._ocrFilled && s._ocrFilled.length) || (s._ocrDerived && s._ocrDerived.length)) {
+      html += `<div class="ocr-legend">
+        <span><span class="legend-dot" style="background:var(--green)"></span>Scanned — read directly off the screenshot</span>
+        <span><span class="legend-dot" style="background:#d9a441"></span>Calc'd — worked out from other numbers, double-check</span>
+        <span><span class="legend-dot" style="background:var(--navy-line)"></span>Unmarked — not found, enter manually</span>
+      </div>`;
+    }
     if (s._ocrLowConfidence || s._ocrSwapped) {
       html += `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#ffd9b3;line-height:1.5">
         ⚠️ ${s._ocrSwapped ? "Attempts/Makes looked swapped and were auto-corrected." : "Couldn't clearly read all 3 numbers (Attempts/Makes/Swishes) from the screenshot."} Please check these against the actual screenshot before saving.
       </div>`;
     }
     html += `<div class="row">
-      ${fieldHtml("Attempts", `<input class="input" id="f-shooting-attempts" type="number" min="0" value="${s.attempts}" oninput="updateShooting('attempts', this.value)" />`, true)}
-      ${fieldHtml("Makes", `<input class="input" id="f-shooting-makes" type="number" min="0" value="${s.makes}" oninput="updateShooting('makes', this.value)" />`, true)}
+      ${fieldHtml("Attempts" + ocrTag(s, "attempts"), `<input class="input${ocrClass(s, "attempts")}" id="f-shooting-attempts" type="number" min="0" value="${s.attempts}" oninput="updateShooting('attempts', this.value)" />`, true)}
+      ${fieldHtml("Makes" + ocrTag(s, "makes"), `<input class="input${ocrClass(s, "makes")}" id="f-shooting-makes" type="number" min="0" value="${s.makes}" oninput="updateShooting('makes', this.value)" />`, true)}
     </div>`;
     const swishPct = (s.swishes !== "" && s.attempts !== "" && Number(s.attempts) > 0)
       ? `<div style="font-size:11px;color:var(--orange);margin-top:4px">≈ ${Math.round((Number(s.swishes) / Number(s.attempts)) * 1000) / 10}% of attempts</div>` : "";
     html += `<div class="row">
-      ${fieldHtml("Swishes", `<input class="input" id="f-shooting-swishes" type="number" min="0" value="${s.swishes}" oninput="updateShooting('swishes', this.value)" />${swishPct}`)}
-      ${fieldHtml("Duration (min)", `<input class="input" id="f-shooting-duration" type="number" min="0" value="${s.duration}" oninput="updateShooting('duration', this.value)" />`)}
+      ${fieldHtml("Swishes" + ocrTag(s, "swishes"), `<input class="input${ocrClass(s, "swishes")}" id="f-shooting-swishes" type="number" min="0" value="${s.swishes}" oninput="updateShooting('swishes', this.value)" />${swishPct}`)}
+      ${fieldHtml("Duration (min)" + ocrTag(s, "duration"), `<input class="input${ocrClass(s, "duration")}" id="f-shooting-duration" type="number" min="0" value="${s.duration}" oninput="updateShooting('duration', this.value)" />`)}
     </div>`;
     html += fieldHtml("Zone makes — close / mid / long", `<div style="display:flex;gap:10px">
       <input class="input" id="f-shooting-closeMakes" type="number" min="0" placeholder="Close" value="${s.closeMakes}" oninput="updateShooting('closeMakes', this.value)" />
@@ -1343,14 +1387,14 @@ function renderLogForm() {
       <input class="input" id="f-shooting-longMakes" type="number" min="0" placeholder="Long" value="${s.longMakes}" oninput="updateShooting('longMakes', this.value)" />
     </div>`);
     html += `<div class="row">
-      ${fieldHtml("Spin rate (%)", `<input class="input" id="f-shooting-spinRate" type="number" min="0" max="100" value="${s.spinRate}" oninput="updateShooting('spinRate', this.value)" />`)}
-      ${fieldHtml("Release time (%)", `<input class="input" id="f-shooting-releaseTime" type="number" min="0" max="100" value="${s.releaseTime}" oninput="updateShooting('releaseTime', this.value)" />`)}
+      ${fieldHtml("Spin rate (%)" + ocrTag(s, "spinRate"), `<input class="input${ocrClass(s, "spinRate")}" id="f-shooting-spinRate" type="number" min="0" max="100" value="${s.spinRate}" oninput="updateShooting('spinRate', this.value)" />`)}
+      ${fieldHtml("Release time (%)" + ocrTag(s, "releaseTime"), `<input class="input${ocrClass(s, "releaseTime")}" id="f-shooting-releaseTime" type="number" min="0" max="100" value="${s.releaseTime}" oninput="updateShooting('releaseTime', this.value)" />`)}
     </div>`;
     html += `<div class="row">
-      ${fieldHtml("Shot arc (%)", `<input class="input" id="f-shooting-shotArc" type="number" min="0" max="100" value="${s.shotArc}" oninput="updateShooting('shotArc', this.value)" />`)}
-      ${fieldHtml("Intensity (%)", `<input class="input" id="f-shooting-intensity" type="number" min="0" max="100" value="${s.intensity}" oninput="updateShooting('intensity', this.value)" />`)}
+      ${fieldHtml("Shot arc (%)" + ocrTag(s, "shotArc"), `<input class="input${ocrClass(s, "shotArc")}" id="f-shooting-shotArc" type="number" min="0" max="100" value="${s.shotArc}" oninput="updateShooting('shotArc', this.value)" />`)}
+      ${fieldHtml("Intensity (%)" + ocrTag(s, "intensity"), `<input class="input${ocrClass(s, "intensity")}" id="f-shooting-intensity" type="number" min="0" max="100" value="${s.intensity}" oninput="updateShooting('intensity', this.value)" />`)}
     </div>`;
-    html += fieldHtml("Shot form", `<input class="input" id="f-shooting-shotForm" type="text" value="${s.shotForm}" placeholder="Consistent / Inconsistent" oninput="updateShooting('shotForm', this.value)" />`);
+    html += fieldHtml("Shot form" + ocrTag(s, "shotForm"), `<input class="input${ocrClass(s, "shotForm")}" id="f-shooting-shotForm" type="text" value="${s.shotForm}" placeholder="Consistent / Inconsistent" oninput="updateShooting('shotForm', this.value)" />`);
   } else {
     html += fieldHtml("Drill name", `<input class="input" id="f-dribbling-drillName" type="text" value="${dr.drillName}" placeholder="Tight Handles" oninput="updateDribbling('drillName', this.value)" />`);
     html += `<div class="row">
