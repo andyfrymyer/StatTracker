@@ -619,6 +619,82 @@ function requirePin(action) {
   if (entered === pin) action();
   else showToast("Wrong PIN");
 }
+// --- Vision-based parsing (via the Railway server) -------------------------
+// Falls back to Tesseract when the server has no API key configured, or when
+// the request fails. Vision handles the zone chart far more reliably because
+// it can actually see which bar sits under which label.
+let visionAvailable = null; // null = unknown, true/false once checked
+async function checkVisionAvailable() {
+  if (!apiConfigured()) { visionAvailable = false; return false; }
+  try {
+    const res = await apiFetch("/api/vision-status");
+    visionAvailable = !!(res && res.available);
+  } catch (e) {
+    visionAvailable = false;
+  }
+  return visionAvailable;
+}
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1]);
+    r.onerror = () => reject(new Error("read failed"));
+    r.readAsDataURL(file);
+  });
+}
+async function parseWithVision(file) {
+  const imageBase64 = await fileToBase64(file);
+  const mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/png";
+  return await apiFetch("/api/vision-parse", {
+    method: "POST",
+    body: JSON.stringify({ imageBase64, mediaType }),
+  });
+}
+// Maps a vision JSON result onto the form state. Returns the list of fields it
+// filled, or null if the payload wasn't usable.
+function applyVisionResult(v) {
+  if (!v || !v.type || v.type === "unknown") return null;
+  const filled = [];
+  const setIf = (key, val) => {
+    if (val !== null && val !== undefined && val !== "") { state.shooting[key] = String(val); filled.push(key); }
+  };
+  if (v.type === "shooting") {
+    state.type = "shooting";
+    setIf("attempts", v.attempts); setIf("makes", v.makes); setIf("swishes", v.swishes);
+    setIf("spinRate", v.spinRate); setIf("releaseTime", v.releaseTime); setIf("shotArc", v.shotArc);
+    setIf("intensity", v.intensity); setIf("duration", v.duration);
+    if (v.shotForm) { state.shooting.shotForm = v.shotForm; filled.push("shotForm"); }
+    if (v.shotType) state.shooting.shotType = v.shotType;
+    state.shooting.label = state.shooting.label || "Shootaround";
+    return { kind: "shooting", filled };
+  }
+  if (v.type === "zones") {
+    state.type = "shooting";
+    for (const z of ["close", "mid", "long"]) {
+      const zd = v[z];
+      if (!zd) continue;
+      setIf(z + "Attempts", zd.attempts);
+      setIf(z + "Makes", zd.makes);
+      setIf(z + "Swishes", zd.swishes);
+    }
+    // Vision reads the labels directly, so there's no Close/Mid ambiguity.
+    state.shooting._zoneGuess = false;
+    const totalAtt = ["close", "mid", "long"].reduce((a, z) => a + ((v[z] && Number(v[z].attempts)) || 0), 0);
+    if (!state.shooting.attempts && totalAtt > 0) state.shooting.attempts = String(totalAtt);
+    return { kind: "zones", filled };
+  }
+  if (v.type === "dribbling") {
+    state.type = "dribbling";
+    if (v.drillName) state.dribbling.drillName = v.drillName;
+    if (v.points !== null && v.points !== undefined) state.dribbling.points = String(v.points);
+    if (v.reps !== null && v.reps !== undefined) state.dribbling.reps = String(v.reps);
+    if (v.date) state.date = v.date;
+    if (v.time) state.time = v.time;
+    return { kind: "dribbling", filled: ["points", "reps"] };
+  }
+  return null;
+}
+
 window.swapCloseMid = function () {
   const s = state.shooting;
   for (const suffix of ["Attempts", "Makes", "Swishes"]) {
@@ -650,7 +726,9 @@ window.copyOcrRaw = function () {
 window.handleScreenshotImport = async function (input) {
   const files = input.files ? Array.from(input.files) : [];
   if (!files.length) return;
-  if (typeof Tesseract === "undefined") {
+  if (visionAvailable === null) await checkVisionAvailable();
+  const useVision = visionAvailable === true;
+  if (!useVision && typeof Tesseract === "undefined") {
     showToast("OCR library failed to load — check your connection");
     input.value = "";
     return;
@@ -660,6 +738,7 @@ window.handleScreenshotImport = async function (input) {
 
   const summary = { shooting: 0, zones: 0, dribbling: 0, unknown: 0 };
   let sawShooting = false, sawZones = false, swapped = false, lowConf = false;
+  let usedVision = false, visionFellBack = false;
   const rawTexts = [];
 
   try {
@@ -668,6 +747,29 @@ window.handleScreenshotImport = async function (input) {
         ? `Reading screenshot ${i + 1} of ${files.length}…`
         : "Reading screenshot… this can take up to 15 seconds";
       render();
+
+      // Try vision first when it's available — it reads the chart layout
+      // directly instead of guessing from flattened text.
+      if (useVision) {
+        try {
+          const v = await parseWithVision(files[i]);
+          const applied = applyVisionResult(v);
+          if (applied) {
+            if (applied.kind === "zones") { summary.zones++; sawZones = true; }
+            else if (applied.kind === "shooting") { summary.shooting++; sawShooting = true; }
+            else if (applied.kind === "dribbling") { summary.dribbling++; }
+            state.shooting._ocrFilled = [...new Set([...(state.shooting._ocrFilled || []), ...applied.filled])];
+            usedVision = true;
+            continue;
+          }
+          summary.unknown++;
+          continue;
+        } catch (err) {
+          // Fall through to Tesseract for this file rather than failing outright.
+          if (typeof Tesseract === "undefined") { summary.unknown++; continue; }
+          visionFellBack = true;
+        }
+      }
 
       let flat;
       try {
@@ -742,6 +844,7 @@ window.handleScreenshotImport = async function (input) {
       if (sawZones) parts.push("zone breakdown");
       if (summary.dribbling) parts.push("dribbling session");
       const skipped = summary.unknown ? ` (${summary.unknown} not recognized)` : "";
+      if (visionFellBack) parts.push("(fell back to basic OCR)");
       showToast(swapped
         ? `Imported ${parts.join(" + ")} — attempts/makes looked swapped, double-check!`
         : `Imported ${parts.join(" + ")}${skipped} — review before logging`);
@@ -1633,7 +1736,7 @@ function renderLogForm() {
   html += `<div class="import-card">
     <input type="file" id="f-screenshot" accept="image/*" multiple style="display:none" onchange="handleScreenshotImport(this)" ${state.ocrBusy ? "disabled" : ""} />
     <button class="btn-ghost" ${state.ocrBusy ? "disabled" : ""} onclick="document.getElementById('f-screenshot').click()">📷 Import from Screenshot</button>
-    <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : "Pick one or both DribbleUp screens at once — stats and &quot;Shots by distance&quot;"}</div>
+    <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : (visionAvailable === true ? "✨ AI vision reading — most accurate. Pick one or both screens." : "Pick one or both DribbleUp screens at once — stats and &quot;Shots by distance&quot;")}</div>
     ${state.lastOcrRaw ? `
       <button class="btn-link" style="margin-top:10px" onclick="toggleOcrDebug()">${state.showOcrDebug ? "Hide" : "Show"} raw OCR text (debug)</button>
       ${state.showOcrDebug ? `
