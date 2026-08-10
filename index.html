@@ -333,6 +333,8 @@ let state = {
   error: "",
   ocrBusy: false,
   ocrStatus: "",
+  lastOcrRaw: "",
+  showOcrDebug: false,
   apiBase: "",
   apiPin: "",
   syncStatus: "", // "", "syncing", "synced", "error", "offline"
@@ -596,6 +598,23 @@ function requirePin(action) {
   if (entered === pin) action();
   else showToast("Wrong PIN");
 }
+window.toggleOcrDebug = function () {
+  state.showOcrDebug = !state.showOcrDebug;
+  render();
+};
+window.copyOcrRaw = function () {
+  const text = state.lastOcrRaw || "";
+  if (!text) { showToast("No OCR text captured yet"); return; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      () => showToast("Raw OCR text copied"),
+      () => showToast("Couldn't copy — select the text manually")
+    );
+  } else {
+    showToast("Couldn't copy — select the text manually");
+  }
+};
+
 window.handleScreenshotImport = async function (input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -610,6 +629,7 @@ window.handleScreenshotImport = async function (input) {
   try {
     const { data: { text } } = await Tesseract.recognize(file, "eng");
     const flat = flattenOcrText(text);
+    state.lastOcrRaw = flat;
     const type = detectScreenshotType(flat);
     if (!type) {
       showToast("Couldn't recognize that screenshot — try a clearer photo or enter manually");
@@ -1237,6 +1257,14 @@ function renderLogForm() {
     <input type="file" id="f-screenshot" accept="image/*" style="display:none" onchange="handleScreenshotImport(this)" ${state.ocrBusy ? "disabled" : ""} />
     <button class="btn-ghost" ${state.ocrBusy ? "disabled" : ""} onclick="document.getElementById('f-screenshot').click()">📷 Import from Screenshot</button>
     <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : "Works with DribbleUp shooting &amp; session-recap screenshots"}</div>
+    ${state.lastOcrRaw ? `
+      <button class="btn-link" style="margin-top:10px" onclick="toggleOcrDebug()">${state.showOcrDebug ? "Hide" : "Show"} raw OCR text (debug)</button>
+      ${state.showOcrDebug ? `
+        <div style="margin-top:10px;text-align:left">
+          <textarea readonly id="f-ocr-raw" style="width:100%;height:150px;background:#0a1526;border:1px solid var(--navy-line);border-radius:8px;color:#cbd3e0;font-family:monospace;font-size:11px;padding:8px;line-height:1.4">${state.lastOcrRaw.replace(/</g, "&lt;")}</textarea>
+          <button class="btn-ghost" style="margin-top:8px;width:100%;padding:8px" onclick="copyOcrRaw()">Copy raw text</button>
+        </div>` : ""}
+    ` : ""}
   </div>`;
 
   html += `<div class="row" style="margin-bottom:18px">
