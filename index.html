@@ -160,6 +160,10 @@ const LAST_NOTIFIED_KEY = "ella-last-notified-standalone";
 const PIN_KEY = "ella-pin-standalone";
 const API_BASE_KEY = "ella-api-base-standalone";
 const API_PIN_KEY = "ella-api-pin-standalone";
+// Baked-in default so a fresh browser/device connects automatically without
+// re-typing the URL. Safe to make public — it's not a secret, just an address.
+// Leave as "" if you don't want a default (e.g. before you've deployed one).
+const DEFAULT_API_BASE = "https://ella-tracker-api-production.up.railway.app";
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
@@ -351,7 +355,9 @@ function load() {
     state.remindersEnabled = localStorage.getItem(REMINDERS_KEY) === "1";
   } catch (e) { console.error(e); }
   try {
-    state.apiBase = localStorage.getItem(API_BASE_KEY) || "";
+    const storedBase = localStorage.getItem(API_BASE_KEY);
+    // null = never set on this device (use default). "" = user explicitly disconnected — respect that.
+    state.apiBase = storedBase !== null ? storedBase : DEFAULT_API_BASE;
     state.apiPin = localStorage.getItem(API_PIN_KEY) || "";
   } catch (e) { console.error(e); }
 }
@@ -445,7 +451,7 @@ window.disconnectApi = function () {
     state.apiBase = "";
     state.apiPin = "";
     state.syncStatus = "";
-    try { localStorage.removeItem(API_BASE_KEY); localStorage.removeItem(API_PIN_KEY); } catch (e) {}
+    try { localStorage.setItem(API_BASE_KEY, ""); localStorage.removeItem(API_PIN_KEY); } catch (e) {}
     showToast("Cloud sync disconnected — using local storage only");
     render();
   });
