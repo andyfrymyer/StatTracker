@@ -419,32 +419,36 @@ function schedulePushGoals() {
   }, 800);
 }
 window.saveApiSettings = function () {
-  const baseInput = document.getElementById("f-api-base");
-  const pinInput = document.getElementById("f-api-pin");
-  const base = baseInput ? baseInput.value.trim().replace(/\/$/, "") : "";
-  const pin = pinInput ? pinInput.value.trim() : "";
-  state.apiBase = base;
-  state.apiPin = pin;
-  try {
-    localStorage.setItem(API_BASE_KEY, base);
-    localStorage.setItem(API_PIN_KEY, pin);
-  } catch (e) {}
-  if (base) {
-    showToast("Cloud sync connected");
-    syncFromApi();
-  } else {
-    state.syncStatus = "";
-    showToast("Cloud sync disabled");
-    render();
-  }
+  requirePin(() => {
+    const baseInput = document.getElementById("f-api-base");
+    const pinInput = document.getElementById("f-api-pin");
+    const base = baseInput ? baseInput.value.trim().replace(/\/$/, "") : "";
+    const pin = pinInput ? pinInput.value.trim() : "";
+    state.apiBase = base;
+    state.apiPin = pin;
+    try {
+      localStorage.setItem(API_BASE_KEY, base);
+      localStorage.setItem(API_PIN_KEY, pin);
+    } catch (e) {}
+    if (base) {
+      showToast("Cloud sync connected");
+      syncFromApi();
+    } else {
+      state.syncStatus = "";
+      showToast("Cloud sync disabled");
+      render();
+    }
+  });
 };
 window.disconnectApi = function () {
-  state.apiBase = "";
-  state.apiPin = "";
-  state.syncStatus = "";
-  try { localStorage.removeItem(API_BASE_KEY); localStorage.removeItem(API_PIN_KEY); } catch (e) {}
-  showToast("Cloud sync disconnected — using local storage only");
-  render();
+  requirePin(() => {
+    state.apiBase = "";
+    state.apiPin = "";
+    state.syncStatus = "";
+    try { localStorage.removeItem(API_BASE_KEY); localStorage.removeItem(API_PIN_KEY); } catch (e) {}
+    showToast("Cloud sync disconnected — using local storage only");
+    render();
+  });
 };
 function showToast(msg) {
   const t = document.getElementById("toast");
