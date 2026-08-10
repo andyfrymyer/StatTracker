@@ -619,6 +619,17 @@ function requirePin(action) {
   if (entered === pin) action();
   else showToast("Wrong PIN");
 }
+window.swapCloseMid = function () {
+  const s = state.shooting;
+  for (const suffix of ["Attempts", "Makes", "Swishes"]) {
+    const tmp = s["close" + suffix];
+    s["close" + suffix] = s["mid" + suffix];
+    s["mid" + suffix] = tmp;
+  }
+  showToast("Swapped Close and Mid");
+  render();
+};
+
 window.toggleOcrDebug = function () {
   state.showOcrDebug = !state.showOcrDebug;
   render();
@@ -670,7 +681,7 @@ window.handleScreenshotImport = async function (input) {
       const type = detectScreenshotType(flat);
 
       if (type === "zones") {
-        const parsed = parseZoneScreenshot(flat);
+        const parsed = parseZoneScreenshot(flat, state.shooting.makes || null);
         state.type = "shooting";
         const zoneKeys = ["closeAttempts", "closeMakes", "closeSwishes", "midAttempts", "midMakes", "midSwishes", "longAttempts", "longMakes", "longSwishes"];
         const filled = [];
@@ -678,6 +689,13 @@ window.handleScreenshotImport = async function (input) {
           if (parsed[key] !== undefined) { state.shooting[key] = parsed[key]; filled.push(key); }
         }
         if (!state.shooting.attempts && parsed._zoneTotalAttempts) state.shooting.attempts = parsed._zoneTotalAttempts;
+        state.shooting._zoneGuess = !!parsed._zoneGuess;
+        // If the main screen already gave us a MAKES total, check the zone
+        // pairing against it — a match means the numbers are paired right.
+        if (parsed._impliedMakes && state.shooting.makes) {
+          const diff = Math.abs(Number(parsed._impliedMakes) - Number(state.shooting.makes));
+          state.shooting._zoneMakesCheck = diff <= 3 ? "ok" : "mismatch";
+        }
         state.shooting._ocrFilled = [...new Set([...(state.shooting._ocrFilled || []), ...filled.filter((k) => k.endsWith("Attempts"))])];
         state.shooting._ocrDerived = [...new Set([...(state.shooting._ocrDerived || []), ...filled.filter((k) => !k.endsWith("Attempts"))])];
         if (filled.length) { summary.zones++; sawZones = true; }
@@ -1345,73 +1363,101 @@ function flattenOcrText(text) {
 // Close-range / Mid-range / Long-range, each with an "N shots" total and
 // Swish% / Make% bands. Note: in DribbleUp's model the Make band EXCLUDES
 // swishes, so makes and swishes are stored as separate counts.
-function parseZoneScreenshot(flat) {
+function parseZoneScreenshot(flat, targetMakes) {
+  // What OCR reliably gives us from the "Shots by distance" popup:
+  //   - the "N shots" bar totals, in some order
+  //   - the make% figures, in THE SAME order as those totals
+  // What it cannot give us: which bar is Close vs Mid. That's an x-position
+  // fact, and flattening to text discards x-position. The vertical offset
+  // between the two captions is tiny (~26px), so the read order even flips
+  // between runs on the identical image. We therefore pair totals to
+  // percentages positionally (reliable), assign the smallest bar to
+  // Long-range (safe — it's visually isolated), and leave Close vs Mid as a
+  // flagged guess the user can flip with one tap.
   const out = {};
-  // LIMITATION: OCR flattens this popup in visual reading order — the "N shots"
-  // captions are read top-down (tallest bar first) while the range labels are
-  // read left-to-right. That makes the shots->zone pairing genuinely ambiguous
-  // from text alone. The percentages, however, DO come out left-to-right in
-  // zone order (all make%, then all swish%), so those are reliable.
-  const shotMatches = [...flat.matchAll(/(\d+)\s*shots?\b/gi)].map((m) => ({ n: Number(m[1]), idx: m.index, end: m.index + m[0].length }));
-  const labels = [];
-  for (const [z, re] of [["close", /Close-?\s?range/i], ["mid", /Mid-?\s?range/i], ["long", /Long-?\s?range/i]]) {
-    const m = flat.match(re);
-    if (m) labels.push({ zone: z, idx: m.index });
-  }
-  labels.sort((a, b) => a.idx - b.idx);
+  const popupIdx = flat.search(/Shots?\s+by\s+distance/i);
+  if (popupIdx < 0) return out;
+  // Stop before the coaching tip / badges, which contain unrelated numbers.
+  const tailIdx = flat.slice(popupIdx).search(/Increase your|Watch this|Badges|Backboard/i);
+  const popup = tailIdx > 0 ? flat.slice(popupIdx, popupIdx + tailIdx) : flat.slice(popupIdx);
 
-  const used = new Set();
-  const zoneAttempts = {};
-  // Pass 1: a shots caption sitting immediately before a range label (nothing
-  // but whitespace between) is unambiguously that zone's — this reliably
-  // catches the isolated short bars.
-  for (const lab of labels) {
-    for (const sm of shotMatches) {
-      if (used.has(sm.idx)) continue;
-      const between = flat.slice(sm.end, lab.idx);
-      if (sm.end <= lab.idx && /^\s*$/.test(between)) {
-        zoneAttempts[lab.zone] = sm.n;
-        used.add(sm.idx);
-        break;
-      }
+  const totals = [...popup.matchAll(/(\d+)\s*shots?\b/gi)].map((m) => Number(m[1]));
+  const pcts = [...popup.matchAll(/(\d{1,3})\s*%/g)].map((m) => Number(m[1]));
+  if (totals.length === 0) return out;
+
+  // Bars big enough to render bands carry a make% (and sometimes a swish%).
+  // Take the first N percentages as the make% list, matched positionally.
+  const banded = totals.filter((n) => n > 1).length || totals.length;
+  const makePcts = pcts.slice(0, Math.min(banded, pcts.length));
+  const swishPcts = pcts.length >= makePcts.length * 2 ? pcts.slice(makePcts.length, makePcts.length * 2) : [];
+
+  // The totals list and the percentage list are each internally ordered, but
+  // OCR sometimes reads totals tallest-first while reading percentages
+  // left-to-right — so the two lists can disagree on direction, and it flips
+  // between runs on the same image. Build both candidate pairings and, when we
+  // know the session's MAKES total, keep whichever reproduces it.
+  const buildBars = (pctList) => totals.map((n, i) => ({
+    attempts: n,
+    makePct: pctList[i] !== undefined ? pctList[i] : null,
+    swishPct: swishPcts[i] !== undefined ? swishPcts[i] : null,
+  }));
+  const impliedFor = (barList) => barList.reduce((a, b) => a + (b.makePct !== null ? Math.round((b.attempts * b.makePct) / 100) : 0), 0);
+
+  // The popup overlays the main stats screen, so its MAKES figure is usually
+  // still visible in the same capture — use it if the caller didn't supply one.
+  if (!targetMakes) {
+    const selfMakes = flat.match(/MAKES\s*%?\s*(\d+)/i);
+    if (selfMakes) targetMakes = selfMakes[1];
+  }
+
+  let bars = buildBars(makePcts);
+  if (targetMakes) {
+    const reversedPcts = [...makePcts].reverse();
+    const alt = buildBars(reversedPcts);
+    const diffA = Math.abs(impliedFor(bars) - Number(targetMakes));
+    const diffB = Math.abs(impliedFor(alt) - Number(targetMakes));
+    if (diffB < diffA) {
+      bars = alt;
+      swishPcts.reverse();
+      bars = buildBars(reversedPcts);
     }
   }
-  // Pass 2: remaining captions were read tallest-first, so assign the largest
-  // remaining value to the zone that still needs one, in reverse read order.
-  const remainingShots = shotMatches.filter((s) => !used.has(s.idx)).map((s) => s.n);
-  const remainingZones = labels.map((l) => l.zone).filter((z) => zoneAttempts[z] === undefined);
-  const ambiguous = [];
-  remainingShots.slice().reverse().forEach((n, i) => {
-    const z = remainingZones[i];
-    if (z !== undefined) { zoneAttempts[z] = n; ambiguous.push(z); }
-  });
 
-  for (const z of ["close", "mid", "long"]) {
-    if (zoneAttempts[z] !== undefined) out[z + "Attempts"] = String(zoneAttempts[z]);
+  // Smallest bar is Long-range; the remaining two are Close and Mid in an
+  // order we can't determine from text.
+  const sorted = [...bars].sort((a, b) => a.attempts - b.attempts);
+  const longBar = sorted[0];
+  const bigBars = sorted.slice(1);
+
+  const assign = (zone, bar) => {
+    if (!bar) return;
+    out[zone + "Attempts"] = String(bar.attempts);
+    if (bar.makePct !== null) out[zone + "Makes"] = String(Math.round((bar.attempts * bar.makePct) / 100));
+    if (bar.swishPct !== null) out[zone + "Swishes"] = String(Math.round((bar.attempts * bar.swishPct) / 100));
+  };
+
+  if (bars.length >= 3) {
+    assign("long", longBar);
+    // Guess: DribbleUp draws Close, Mid, Long left-to-right, and mid-range
+    // volume usually exceeds close-range in these sessions — but this is the
+    // ambiguous part, flagged below so the user can flip it.
+    assign("close", bigBars[0]);
+    assign("mid", bigBars[1]);
+    if (bigBars.length === 2 && bigBars[0].attempts !== bigBars[1].attempts) out._zoneGuess = true;
+  } else if (bars.length === 2) {
+    assign("close", bigBars[0] || sorted[0]);
+    assign("mid", bigBars[1] || sorted[1]);
+    out._zoneGuess = true;
+  } else {
+    assign("close", bars[0]);
   }
 
-  // Percentages come out left-to-right: all make% first, then all swish%.
-  // Scope to the popup only — it overlays the main stats screen, whose own
-  // "SHOOTING 45%" / "Swishes 17%" figures would otherwise contaminate this.
-  const popupIdx = flat.search(/Shots?\s+by\s+distance/i);
-  const popupText = popupIdx >= 0 ? flat.slice(popupIdx) : flat;
-  const pcts = [...popupText.matchAll(/(\d{1,3})\s*%/g)].map((m) => Number(m[1]));
-  // Zones too sparse to render bands (e.g. a 1-shot long-range bar) contribute
-  // no percentages, so only the first N zones get pairs.
-  const nPairs = Math.floor(pcts.length / 2);
-  const orderedZones = labels.map((l) => l.zone).filter((z) => zoneAttempts[z] !== undefined).slice(0, nPairs);
-  const half = nPairs;
-  orderedZones.forEach((z, i) => {
-    const attempts = zoneAttempts[z];
-    const makePct = pcts[i];
-    const swishPct = pcts[half + i];
-    if (makePct !== undefined) out[z + "Makes"] = String(Math.round((attempts * makePct) / 100));
-    if (swishPct !== undefined) out[z + "Swishes"] = String(Math.round((attempts * swishPct) / 100));
-  });
-
-  const totalAttempts = Object.values(zoneAttempts).reduce((a, n) => a + n, 0);
+  const totalAttempts = totals.reduce((a, n) => a + n, 0);
   if (totalAttempts > 0) out._zoneTotalAttempts = String(totalAttempts);
-  if (ambiguous.length > 1) out._zoneAmbiguous = ambiguous;
+  // Total makes implied by the pairing — lets the caller sanity-check against
+  // the MAKES figure from the main screen.
+  const impliedMakes = bars.reduce((a, b) => a + (b.makePct !== null ? Math.round((b.attempts * b.makePct) / 100) : 0), 0);
+  if (impliedMakes > 0) out._impliedMakes = impliedMakes;
   return out;
 }
 
@@ -1635,6 +1681,12 @@ function renderLogForm() {
     html += `<div class="field">
       <label>Shots by distance ${ocrTag(s, "closeAttempts")}</label>
       <div style="font-size:10.5px;color:var(--gray);margin:-2px 0 8px">Attempts / makes / swishes per zone. Import the "Shots by distance" popup to fill automatically.</div>
+      ${s._zoneGuess ? `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;color:#ffd9b3;line-height:1.45">
+        ⚠️ Close vs Mid can't be told apart from the screenshot text — check them against the popup.
+        <button type="button" onclick="swapCloseMid()" style="display:block;margin-top:7px;background:var(--orange);color:var(--navy);border:none;border-radius:7px;padding:6px 12px;font-weight:700;font-size:11.5px;cursor:pointer">⇅ Swap Close / Mid</button>
+      </div>` : ""}
+      ${s._zoneMakesCheck === "ok" ? `<div style="font-size:11px;color:var(--green);margin-bottom:9px">✓ Zone makes add up to the session total — pairing looks right.</div>` : ""}
+      ${s._zoneMakesCheck === "mismatch" ? `<div style="font-size:11px;color:#ff8a8a;margin-bottom:9px">⚠️ Zone makes don't match the session total — please verify.</div>` : ""}
       ${["close", "mid", "long"].map((z) => {
         const name = z === "close" ? "Close" : z === "mid" ? "Mid" : "Long";
         return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
