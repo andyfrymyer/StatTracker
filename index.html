@@ -1169,33 +1169,60 @@ function numAfter(flat, label) {
 function parseShootScreenshot(flat) {
   const out = {};
 
-  // The ATTEMPTS/MAKES/SWISHES trio sit together as a block in the source
-  // image, but OCR reading order sometimes interleaves the "SHOOTING XX%"
-  // circle text or the duplicate "Swishes XX%" line in between them. Those
-  // interlopers are always followed by a % sign; the real count values never
-  // are. So: isolate the block starting at ATTEMPTS, then pull out only the
-  // numbers NOT followed by a % — those are attempts, makes, swishes in order.
-  const attemptsIdx = flat.search(/ATTEMPTS/i);
-  if (attemptsIdx !== -1) {
-    const stopMatch = flat.slice(attemptsIdx).match(/SPIN RATE|RELEASE TIME|SHOT ARC|SHOT FORM|SHOT TYPE|DURATION|TIME ACTIVE|INTENSITY/i);
-    const block = stopMatch ? flat.slice(attemptsIdx, attemptsIdx + stopMatch.index) : flat.slice(attemptsIdx);
-    // Strip any "<number>%" tokens entirely first (avoids regex backtracking
-    // leaving stray partial-digit matches, e.g. "4" out of "40%"), then the
-    // remaining digit runs are the real count values, in order.
-    const blockNoPct = block.replace(/\d+\s*%/g, " ");
-    const counts = [...blockNoPct.matchAll(/\d+/g)].map((m) => m[0]);
-    out.attempts = counts[0] !== undefined ? counts[0] : null;
-    out.makes = counts[1] !== undefined ? counts[1] : null;
-    out.swishes = counts[2] !== undefined ? counts[2] : null;
-  } else {
-    out.attempts = numAfter(flat, "ATTEMPTS");
-    out.makes = numAfter(flat, "MAKES");
-    const swishMatches = [...flat.matchAll(/SWISHES\D{0,10}?(\d+)\s*(%)?/gi)];
-    const swishNonPct = swishMatches.find((m) => !m[2]);
-    out.swishes = swishNonPct ? swishNonPct[1] : (swishMatches[0] ? swishMatches[0][1] : null);
+  // OCR on this screen is unreliable for the big stylized numbers in the stats
+  // block — they're frequently dropped entirely, and labels often get read as a
+  // group separate from their values (e.g. "SPIN RATE RELEASE TIME SHOT ARC"
+  // followed by "8% 0% 40%"). So we lean on the most consistently-read sources
+  // and cross-derive the rest.
+
+  // 1. Attempts: the coaching tip states it in plain prose ("You took 250
+  //    shots"), which OCR reads far more reliably than the stats block.
+  const tipM = flat.match(/took\s+(\d+)\s*&?\s*shots?/i);
+  out.attempts = tipM ? tipM[1] : null;
+
+  // 2. Overall shooting % from the circle ("SHOOTING 45%" — the % is sometimes
+  //    misread as a stray "o").
+  const pctM = flat.match(/SHOOTING\s+(\d{1,3})\s*(?:%|o\b|\bo\s)/i);
+  const shootingPct = pctM ? Number(pctM[1]) : null;
+
+  // 3. Makes: try to read it directly, tolerating junk between label and value.
+  const makesM = flat.match(/MAKES\s*%?\s*(\d+)/i);
+  out.makes = makesM ? makesM[1] : null;
+
+  // Fall back to the ATTEMPTS block only if the tip didn't give us attempts.
+  if (out.attempts === null) {
+    const attemptsIdx = flat.search(/ATTEMPTS/i);
+    if (attemptsIdx !== -1) {
+      const stopMatch = flat.slice(attemptsIdx).match(/SPIN RATE|RELEASE TIME|SHOT ARC|SHOT FORM|SHOT TYPE|DURATION|TIME ACTIVE|INTENSITY/i);
+      const block = stopMatch ? flat.slice(attemptsIdx, attemptsIdx + stopMatch.index) : flat.slice(attemptsIdx);
+      const counts = [...block.replace(/\d+\s*%/g, " ").matchAll(/\d+/g)].map((m) => m[0]);
+      if (counts[0] !== undefined) out.attempts = counts[0];
+      if (out.makes === null && counts[1] !== undefined) out.makes = counts[1];
+      if (counts[2] !== undefined) out.swishes = counts[2];
+    }
   }
 
-  // Belt-and-suspenders: makes can never exceed attempts.
+  // 4. Derive/validate makes against the shooting percentage.
+  if (out.attempts !== null && shootingPct !== null) {
+    const expected = Math.round((Number(out.attempts) * shootingPct) / 100);
+    const makesNum = out.makes !== null ? Number(out.makes) : null;
+    if (makesNum === null || makesNum > Number(out.attempts) || Math.abs(makesNum - expected) > Math.max(5, expected * 0.2)) {
+      out.makes = String(expected);
+      out._recovered = true;
+    }
+  }
+
+  // 5. Swishes: derive from the "Swishes NN%" line if not already read.
+  if ((out.swishes === null || out.swishes === undefined) && out.attempts !== null) {
+    const swishPctM = flat.match(/Swishes\s+(\d{1,3})\s*%/i);
+    if (swishPctM) {
+      out.swishes = String(Math.round((Number(out.attempts) * Number(swishPctM[1])) / 100));
+      out._recovered = true;
+    }
+  }
+  if (out.swishes === undefined) out.swishes = null;
+
+  // 6. Makes can never exceed attempts.
   if (out.attempts !== null && out.makes !== null && Number(out.makes) > Number(out.attempts)) {
     const tmp = out.attempts;
     out.attempts = out.makes;
@@ -1203,15 +1230,31 @@ function parseShootScreenshot(flat) {
     out._swapped = true;
   }
 
-  const spinM = flat.match(/SPIN RATE\D{0,10}?(\d+)\s*%/i); out.spinRate = spinM ? spinM[1] : null;
-  const relM = flat.match(/RELEASE TIME\D{0,10}?(\d+)\s*%/i); out.releaseTime = relM ? relM[1] : null;
-  const arcM = flat.match(/SHOT ARC\D{0,10}?(\d+)\s*%/i); out.shotArc = arcM ? arcM[1] : null;
-  const formM = flat.match(/SHOT FORM\D{0,20}?(Consistent|Inconsistent)/i); out.shotForm = formM ? formM[1] : null;
-  const typeM = flat.match(/SHOT TYPE\D{0,10}?(\d+)\s*%\s*relaxed/i); out.shotType = typeM ? `${typeM[1]}% relaxed` : null;
-  const durM = flat.match(/(?:DURATION|TIME ACTIVE)\D{0,10}?(\d+)\s*min/i); out.duration = durM ? durM[1] : null;
-  const intM = flat.match(/INTENSITY\D{0,10}?(\d+)\s*%/i); out.intensity = intM ? intM[1] : null;
-  const titleM = flat.match(/\b(SHOOTAROUND|SHOOT AROUND)\b/i);
-  out.label = titleM ? "Shootaround" : "Shootaround";
+  // 7. Three-up metric row: labels are often grouped, then values grouped.
+  const tripleM = flat.match(/SPIN RATE\s+RELEASE TIME\s+SHOT ARC\s+(\d+)\s*%\s+(\d+)\s*%\s+(\d+)\s*%/i);
+  if (tripleM) {
+    out.spinRate = tripleM[1];
+    out.releaseTime = tripleM[2];
+    out.shotArc = tripleM[3];
+  } else {
+    const s = flat.match(/SPIN RATE\D{0,10}?(\d+)\s*%/i); out.spinRate = s ? s[1] : null;
+    const r = flat.match(/RELEASE TIME\D{0,10}?(\d+)\s*%/i); out.releaseTime = r ? r[1] : null;
+    const a = flat.match(/SHOT ARC\D{0,10}?(\d+)\s*%/i); out.shotArc = a ? a[1] : null;
+  }
+
+  // 8. Duration + intensity, also often grouped ("TIME ACTIVE INTENSITY 39 min 82%").
+  const diM = flat.match(/(?:TIME ACTIVE|DURATION)\s+INTENSITY\s+(\d+)\s*min\s+(\d+)/i);
+  if (diM) {
+    out.duration = diM[1];
+    out.intensity = diM[2];
+  } else {
+    const d = flat.match(/(?:TIME ACTIVE|DURATION)\D{0,10}?(\d+)\s*min/i); out.duration = d ? d[1] : null;
+    const i = flat.match(/INTENSITY\D{0,10}?(\d+)\s*%/i); out.intensity = i ? i[1] : null;
+  }
+
+  const formM = flat.match(/\b(Inconsistent|Consistent)\b/i); out.shotForm = formM ? formM[1] : null;
+  const typeM = flat.match(/(\d+)\s*%\s*relaxed/i); out.shotType = typeM ? `${typeM[1]}% relaxed` : null;
+  out.label = "Shootaround";
   return out;
 }
 
