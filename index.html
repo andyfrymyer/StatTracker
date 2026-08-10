@@ -348,7 +348,10 @@ let state = {
   syncStatus: "", // "", "syncing", "synced", "error", "offline"
 };
 function emptyShooting() {
-  return { attempts: "", makes: "", swishes: "", spinRate: "", releaseTime: "", shotArc: "", shotForm: "", shotType: "", duration: "", intensity: "", label: "Shootaround", closeMakes: "", midMakes: "", longMakes: "" };
+  return { attempts: "", makes: "", swishes: "", spinRate: "", releaseTime: "", shotArc: "", shotForm: "", shotType: "", duration: "", intensity: "", label: "Shootaround",
+    closeMakes: "", midMakes: "", longMakes: "",
+    closeAttempts: "", midAttempts: "", longAttempts: "",
+    closeSwishes: "", midSwishes: "", longSwishes: "" };
 }
 function emptyDribbling() { return { drillName: "Tight Handles", points: "", reps: "", duration: "" }; }
 
@@ -515,6 +518,12 @@ window.handleAdd = function () {
       closeMakes: s.closeMakes === "" ? null : Number(s.closeMakes),
       midMakes: s.midMakes === "" ? null : Number(s.midMakes),
       longMakes: s.longMakes === "" ? null : Number(s.longMakes),
+      closeAttempts: s.closeAttempts === "" ? null : Number(s.closeAttempts),
+      midAttempts: s.midAttempts === "" ? null : Number(s.midAttempts),
+      longAttempts: s.longAttempts === "" ? null : Number(s.longAttempts),
+      closeSwishes: s.closeSwishes === "" ? null : Number(s.closeSwishes),
+      midSwishes: s.midSwishes === "" ? null : Number(s.midSwishes),
+      longSwishes: s.longSwishes === "" ? null : Number(s.longSwishes),
     };
   } else {
     const d = state.dribbling;
@@ -645,6 +654,25 @@ window.handleScreenshotImport = async function (input) {
     const type = detectScreenshotType(flat);
     if (!type) {
       showToast("Couldn't recognize that screenshot — try a clearer photo or enter manually");
+    } else if (type === "zones") {
+      const parsed = parseZoneScreenshot(flat);
+      state.type = "shooting";
+      state.shooting = { ...state.shooting };
+      const zoneKeys = ["closeAttempts", "closeMakes", "closeSwishes", "midAttempts", "midMakes", "midSwishes", "longAttempts", "longMakes", "longSwishes"];
+      const filled = [];
+      for (const key of zoneKeys) {
+        if (parsed[key] !== undefined) { state.shooting[key] = parsed[key]; filled.push(key); }
+      }
+      // If total attempts hasn't been entered yet, seed it from the zone totals.
+      if (!state.shooting.attempts && parsed._zoneTotalAttempts) {
+        state.shooting.attempts = parsed._zoneTotalAttempts;
+        filled.push("attempts");
+      }
+      state.shooting._ocrFilled = [...(state.shooting._ocrFilled || []), ...filled.filter((k) => k !== "attempts")];
+      state.shooting._ocrDerived = [...(state.shooting._ocrDerived || []), ...filled.filter((k) => k.endsWith("Makes") || k.endsWith("Swishes"))];
+      showToast(filled.length
+        ? `Read zone breakdown — ${filled.length} field${filled.length === 1 ? "" : "s"} filled. Review before logging.`
+        : "Couldn't read the zone breakdown — enter manually");
     } else if (type === "shooting") {
       const parsed = parseShootScreenshot(flat);
       state.type = "shooting";
@@ -843,6 +871,19 @@ function computeDerived() {
   const totalClose = shootingSessions.reduce((a, s) => a + (s.closeMakes || 0), 0);
   const totalMid = shootingSessions.reduce((a, s) => a + (s.midMakes || 0), 0);
   const totalLong = shootingSessions.reduce((a, s) => a + (s.longMakes || 0), 0);
+  const zoneStats = ["close", "mid", "long"].map((z) => {
+    const att = shootingSessions.reduce((a, s) => a + (s[z + "Attempts"] || 0), 0);
+    const mk = shootingSessions.reduce((a, s) => a + (s[z + "Makes"] || 0), 0);
+    const sw = shootingSessions.reduce((a, s) => a + (s[z + "Swishes"] || 0), 0);
+    return {
+      zone: z,
+      label: z === "close" ? "Close-range" : z === "mid" ? "Mid-range" : "Long-range",
+      attempts: att, makes: mk, swishes: sw,
+      pct: att > 0 ? Math.round((mk / att) * 1000) / 10 : null,
+      swishPct: att > 0 ? Math.round((sw / att) * 1000) / 10 : null,
+    };
+  });
+  const hasZoneAttempts = zoneStats.some((z) => z.attempts > 0);
   const hasZoneData = totalClose + totalMid + totalLong > 0;
   const practicedDates = new Set(sessions.map((s) => s.date));
   const insight = computeInsight(sessions, weekly, dayStreak);
@@ -904,7 +945,7 @@ function computeDerived() {
   }
   const latestForm = shootingByDate.filter((s) => s.shotForm).slice(-1)[0];
 
-  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm };
+  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm };
 }
 
 /* ---------- render ---------- */
@@ -1117,6 +1158,27 @@ function renderDashboard() {
     </div>
     <div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>`;
   }
+  if (d.hasZoneAttempts) {
+    const zColors = { close: "var(--blue)", mid: "var(--orange)", long: "var(--green)" };
+    html += `<div class="card">
+      <div class="chart-title" style="padding:0 0 4px">Shooting by Distance</div>
+      <div style="font-size:11px;color:var(--gray);margin-bottom:10px">All sessions combined. Swishes counted separately from makes, as DribbleUp reports them.</div>`;
+    for (const z of d.zoneStats) {
+      if (z.attempts === 0) continue;
+      const barPct = z.pct !== null ? Math.min(100, z.pct) : 0;
+      html += `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+          <span style="font-size:12.5px;color:#e4e9f1;font-weight:600">${z.label}</span>
+          <span style="font-size:12px;color:var(--gray)">${z.makes}/${z.attempts} · <strong style="color:#fff">${z.pct}%</strong>${z.swishes > 0 ? ` · ${z.swishPct}% swish` : ""}</span>
+        </div>
+        <div style="height:7px;border-radius:99px;background:var(--navy-line);overflow:hidden">
+          <div style="height:100%;width:${barPct}%;background:${zColors[z.zone]};border-radius:99px"></div>
+        </div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
   if (d.mechanics.length > 0 || d.latestForm) {
     html += `<div class="card">
       <div class="chart-title" style="padding:0 0 4px">Shot Mechanics</div>
@@ -1253,7 +1315,87 @@ function flattenOcrText(text) {
   return text.replace(/\s+/g, " ").trim();
 }
 
+// Parses the "Shots by distance" popup: three stacked bars labelled
+// Close-range / Mid-range / Long-range, each with an "N shots" total and
+// Swish% / Make% bands. Note: in DribbleUp's model the Make band EXCLUDES
+// swishes, so makes and swishes are stored as separate counts.
+function parseZoneScreenshot(flat) {
+  const out = {};
+  // LIMITATION: OCR flattens this popup in visual reading order — the "N shots"
+  // captions are read top-down (tallest bar first) while the range labels are
+  // read left-to-right. That makes the shots->zone pairing genuinely ambiguous
+  // from text alone. The percentages, however, DO come out left-to-right in
+  // zone order (all make%, then all swish%), so those are reliable.
+  const shotMatches = [...flat.matchAll(/(\d+)\s*shots?\b/gi)].map((m) => ({ n: Number(m[1]), idx: m.index, end: m.index + m[0].length }));
+  const labels = [];
+  for (const [z, re] of [["close", /Close-?\s?range/i], ["mid", /Mid-?\s?range/i], ["long", /Long-?\s?range/i]]) {
+    const m = flat.match(re);
+    if (m) labels.push({ zone: z, idx: m.index });
+  }
+  labels.sort((a, b) => a.idx - b.idx);
+
+  const used = new Set();
+  const zoneAttempts = {};
+  // Pass 1: a shots caption sitting immediately before a range label (nothing
+  // but whitespace between) is unambiguously that zone's — this reliably
+  // catches the isolated short bars.
+  for (const lab of labels) {
+    for (const sm of shotMatches) {
+      if (used.has(sm.idx)) continue;
+      const between = flat.slice(sm.end, lab.idx);
+      if (sm.end <= lab.idx && /^\s*$/.test(between)) {
+        zoneAttempts[lab.zone] = sm.n;
+        used.add(sm.idx);
+        break;
+      }
+    }
+  }
+  // Pass 2: remaining captions were read tallest-first, so assign the largest
+  // remaining value to the zone that still needs one, in reverse read order.
+  const remainingShots = shotMatches.filter((s) => !used.has(s.idx)).map((s) => s.n);
+  const remainingZones = labels.map((l) => l.zone).filter((z) => zoneAttempts[z] === undefined);
+  const ambiguous = [];
+  remainingShots.slice().reverse().forEach((n, i) => {
+    const z = remainingZones[i];
+    if (z !== undefined) { zoneAttempts[z] = n; ambiguous.push(z); }
+  });
+
+  for (const z of ["close", "mid", "long"]) {
+    if (zoneAttempts[z] !== undefined) out[z + "Attempts"] = String(zoneAttempts[z]);
+  }
+
+  // Percentages come out left-to-right: all make% first, then all swish%.
+  // Scope to the popup only — it overlays the main stats screen, whose own
+  // "SHOOTING 45%" / "Swishes 17%" figures would otherwise contaminate this.
+  const popupIdx = flat.search(/Shots?\s+by\s+distance/i);
+  const popupText = popupIdx >= 0 ? flat.slice(popupIdx) : flat;
+  const pcts = [...popupText.matchAll(/(\d{1,3})\s*%/g)].map((m) => Number(m[1]));
+  // Zones too sparse to render bands (e.g. a 1-shot long-range bar) contribute
+  // no percentages, so only the first N zones get pairs.
+  const nPairs = Math.floor(pcts.length / 2);
+  const orderedZones = labels.map((l) => l.zone).filter((z) => zoneAttempts[z] !== undefined).slice(0, nPairs);
+  const half = nPairs;
+  orderedZones.forEach((z, i) => {
+    const attempts = zoneAttempts[z];
+    const makePct = pcts[i];
+    const swishPct = pcts[half + i];
+    if (makePct !== undefined) out[z + "Makes"] = String(Math.round((attempts * makePct) / 100));
+    if (swishPct !== undefined) out[z + "Swishes"] = String(Math.round((attempts * swishPct) / 100));
+  });
+
+  const totalAttempts = Object.values(zoneAttempts).reduce((a, n) => a + n, 0);
+  if (totalAttempts > 0) out._zoneTotalAttempts = String(totalAttempts);
+  if (ambiguous.length > 1) out._zoneAmbiguous = ambiguous;
+  return out;
+}
+
 function detectScreenshotType(flat) {
+  // The zone popup is distinctive: range labels plus the Swish/Make/Miss legend.
+  const zoneHits = /Close-?range/i.test(flat) && /Mid-?range/i.test(flat) && /Long-?range/i.test(flat);
+  const hasLegend = /\bSwish\b/i.test(flat) && /\bMake\b/i.test(flat) && /\bMiss\b/i.test(flat);
+  const byDistance = /Shots?\s+by\s+distance/i.test(flat);
+  if (byDistance || (zoneHits && hasLegend)) return "zones";
+
   const hasShootingWords = /ATTEMPTS/i.test(flat) && /MAKES/i.test(flat);
   const hasDribbleWords = /\bpts\b/i.test(flat) && /\breps\b/i.test(flat);
   if (hasShootingWords) return "shooting";
@@ -1464,11 +1606,19 @@ function renderLogForm() {
       ${fieldHtml("Swishes" + ocrTag(s, "swishes"), `<input class="input${ocrClass(s, "swishes")}" id="f-shooting-swishes" type="number" min="0" value="${s.swishes}" oninput="updateShooting('swishes', this.value)" />${swishPct}`)}
       ${fieldHtml("Duration (min)" + ocrTag(s, "duration"), `<input class="input${ocrClass(s, "duration")}" id="f-shooting-duration" type="number" min="0" value="${s.duration}" oninput="updateShooting('duration', this.value)" />`)}
     </div>`;
-    html += fieldHtml("Zone makes — close / mid / long", `<div style="display:flex;gap:10px">
-      <input class="input" id="f-shooting-closeMakes" type="number" min="0" placeholder="Close" value="${s.closeMakes}" oninput="updateShooting('closeMakes', this.value)" />
-      <input class="input" id="f-shooting-midMakes" type="number" min="0" placeholder="Mid" value="${s.midMakes}" oninput="updateShooting('midMakes', this.value)" />
-      <input class="input" id="f-shooting-longMakes" type="number" min="0" placeholder="Long" value="${s.longMakes}" oninput="updateShooting('longMakes', this.value)" />
-    </div>`);
+    html += `<div class="field">
+      <label>Shots by distance ${ocrTag(s, "closeAttempts")}</label>
+      <div style="font-size:10.5px;color:var(--gray);margin:-2px 0 8px">Attempts / makes / swishes per zone. Import the "Shots by distance" popup to fill automatically.</div>
+      ${["close", "mid", "long"].map((z) => {
+        const name = z === "close" ? "Close" : z === "mid" ? "Mid" : "Long";
+        return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <span style="font-size:11.5px;color:var(--gray);width:42px;flex-shrink:0">${name}</span>
+          <input class="input${ocrClass(s, z + "Attempts")}" id="f-shooting-${z}Attempts" type="number" min="0" placeholder="att" value="${s[z + "Attempts"] || ""}" oninput="updateShooting('${z}Attempts', this.value)" style="margin-top:0" />
+          <input class="input${ocrClass(s, z + "Makes")}" id="f-shooting-${z}Makes" type="number" min="0" placeholder="make" value="${s[z + "Makes"] || ""}" oninput="updateShooting('${z}Makes', this.value)" style="margin-top:0" />
+          <input class="input${ocrClass(s, z + "Swishes")}" id="f-shooting-${z}Swishes" type="number" min="0" placeholder="swish" value="${s[z + "Swishes"] || ""}" oninput="updateShooting('${z}Swishes', this.value)" style="margin-top:0" />
+        </div>`;
+      }).join("")}
+    </div>`;
     html += `<div class="row">
       ${fieldHtml("Spin rate (%)" + ocrTag(s, "spinRate"), `<input class="input${ocrClass(s, "spinRate")}" id="f-shooting-spinRate" type="number" min="0" max="100" value="${s.spinRate}" oninput="updateShooting('spinRate', this.value)" />`)}
       ${fieldHtml("Release time (%)" + ocrTag(s, "releaseTime"), `<input class="input${ocrClass(s, "releaseTime")}" id="f-shooting-releaseTime" type="number" min="0" max="100" value="${s.releaseTime}" oninput="updateShooting('releaseTime', this.value)" />`)}
