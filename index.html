@@ -171,6 +171,7 @@ const LAST_NOTIFIED_KEY = "ella-last-notified-standalone";
 const PIN_KEY = "ella-pin-standalone";
 const API_BASE_KEY = "ella-api-base-standalone";
 const API_PIN_KEY = "ella-api-pin-standalone";
+const COACH_CACHE_KEY = "ella-coach-note-standalone";
 // Baked-in default so a fresh browser/device connects automatically without
 // re-typing the URL. Safe to make public — it's not a secret, just an address.
 // Leave as "" if you don't want a default (e.g. before you've deployed one).
@@ -347,6 +348,8 @@ let state = {
   lastOcrRaw: "",
   showOcrDebug: false,
   editingId: null,
+  coachNote: null,      // { summary, focus, goals, benchmarks, generatedAt, sessionCount }
+  coachLoading: false,
   apiBase: "",
   apiPin: "",
   syncStatus: "", // "", "syncing", "synced", "error", "offline"
@@ -370,6 +373,10 @@ function load() {
   } catch (e) { console.error(e); }
   try {
     state.remindersEnabled = localStorage.getItem(REMINDERS_KEY) === "1";
+  } catch (e) { console.error(e); }
+  try {
+    const raw = localStorage.getItem(COACH_CACHE_KEY);
+    if (raw) state.coachNote = JSON.parse(raw);
   } catch (e) { console.error(e); }
   try {
     const storedBase = localStorage.getItem(API_BASE_KEY);
@@ -759,6 +766,54 @@ function applyVisionResult(v) {
   return null;
 }
 
+// --- AI coaching analysis ---------------------------------------------------
+// Cached by session count so it doesn't re-bill the API on every page view —
+// it only goes stale when new sessions are logged.
+window.refreshCoachNote = async function (force) {
+  if (!apiConfigured()) { showToast("Connect Cloud Sync first to use AI analysis"); return; }
+  const shooting = state.sessions.filter((s) => s.type === "shooting");
+  if (shooting.length === 0) { showToast("Log a session first"); return; }
+  if (!force && state.coachNote && state.coachNote.sessionCount === state.sessions.length) return;
+
+  state.coachLoading = true; render();
+  try {
+    const payload = {
+      sessions: state.sessions.map((s) => {
+        const c = { ...s };
+        delete c.id;
+        return c;
+      }),
+      goals: state.goals,
+    };
+    const note = await apiFetch("/api/coach-note", { method: "POST", body: JSON.stringify(payload) });
+    if (note && note.summary) {
+      note.generatedAt = new Date().toISOString();
+      note.sessionCount = state.sessions.length;
+      state.coachNote = note;
+      try { localStorage.setItem(COACH_CACHE_KEY, JSON.stringify(note)); } catch (e) {}
+    } else {
+      showToast("AI analysis returned nothing usable");
+    }
+  } catch (e) {
+    showToast(String(e.message || "").includes("503")
+      ? "AI analysis isn't set up on the server yet"
+      : "Couldn't get AI analysis — showing the basic note");
+  } finally {
+    state.coachLoading = false;
+    render();
+  }
+};
+window.applySuggestedGoals = function () {
+  const g = state.coachNote && state.coachNote.goals;
+  if (!g) return;
+  if (g.shots) state.goals.shots = Number(g.shots);
+  if (g.dribbleMinutes) state.goals.dribbleMinutes = Number(g.dribbleMinutes);
+  persistGoals();
+  schedulePushGoals();
+  showToast("Weekly goals updated");
+  render();
+};
+
 window.swapCloseMid = function () {
   const s = state.shooting;
   for (const suffix of ["Attempts", "Makes", "Swishes"]) {
@@ -979,7 +1034,9 @@ window.printRecap = function () {
       <div class="rp-row"><span>Best single-session FG%</span><strong>${d.bests.bestPct ? d.bests.bestPct.pct + "%" : "—"}</strong></div>
       <div class="rp-row"><span>Most makes in a session</span><strong>${d.bests.mostMakes ? d.bests.mostMakes.makes : "—"}</strong></div>
     </div>
-    <div class="rp-note"><strong>Coach's Note:</strong> ${d.insight.text}</div>
+    ${state.coachNote && state.coachNote.summary ? `
+      <div class="rp-note"><strong>Coach's Note:</strong> ${state.coachNote.summary}${state.coachNote.focus ? ` <strong>Focus next:</strong> ${state.coachNote.focus}` : ""}</div>
+    ` : `<div class="rp-note"><strong>Coach's Note:</strong> ${d.insight.text}</div>`}
   `;
   window.print();
 };
@@ -1342,11 +1399,38 @@ function renderDashboard() {
     </div>
   </div>`;
 
-  const insightColor = d.insight.tone === "warning" ? "var(--orange)" : d.insight.tone === "positive" ? "var(--green)" : "var(--gray)";
-  html += `<div class="insight-card ${d.insight.tone}">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${insightColor}" stroke-width="2" style="flex-shrink:0;margin-top:2px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-    <div><div class="insight-title">Coach's Note</div><div class="insight-text">${d.insight.text}</div></div>
-  </div>`;
+  const note = state.coachNote;
+  const noteStale = note && note.sessionCount !== state.sessions.length;
+  if (note && note.summary) {
+    html += `<div class="insight-card positive" style="flex-direction:column;gap:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:8px">
+        <div class="insight-title" style="margin:0">✨ AI Coach's Note</div>
+        <button class="btn-link" style="font-size:10.5px" ${state.coachLoading ? "disabled" : ""} onclick="refreshCoachNote(true)">${state.coachLoading ? "Analyzing…" : "Refresh"}</button>
+      </div>
+      <div class="insight-text" style="margin-bottom:10px">${note.summary}</div>
+      ${note.focus ? `<div style="font-size:12.5px;color:#ffd9b3;background:rgba(244,123,32,0.10);border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${note.focus}</div>` : ""}
+      ${note.benchmarks ? `<div style="font-size:12px;color:#cbd3e0;line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${note.benchmarks}</div>` : ""}
+      ${note.goals && (note.goals.shots || note.goals.dribbleMinutes) ? `
+        <div style="width:100%;border-top:1px solid var(--navy-line);padding-top:10px">
+          <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Suggested next week</div>
+          <div style="font-size:12.5px;color:#e4e9f1;margin-bottom:3px">${note.goals.shots || state.goals.shots} shots · ${note.goals.dribbleMinutes || state.goals.dribbleMinutes} DribbleUp min</div>
+          ${note.goals.rationale ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-bottom:8px">${note.goals.rationale}</div>` : ""}
+          <button class="btn-ghost" style="padding:7px 13px;font-size:11.5px" onclick="applySuggestedGoals()">Use these goals</button>
+        </div>` : ""}
+      ${noteStale ? `<div style="font-size:11px;color:var(--gray);margin-top:9px;width:100%">New sessions logged since this was written — tap Refresh to update.</div>` : ""}
+      <div style="font-size:10px;color:var(--gray);opacity:0.7;margin-top:8px;width:100%">AI-generated from your logged data. Treat as a prompt for your own judgement, not a verdict.</div>
+    </div>`;
+  } else {
+    const insightColor = d.insight.tone === "warning" ? "var(--orange)" : d.insight.tone === "positive" ? "var(--green)" : "var(--gray)";
+    html += `<div class="insight-card ${d.insight.tone}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${insightColor}" stroke-width="2" style="flex-shrink:0;margin-top:2px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      <div style="flex:1">
+        <div class="insight-title">Coach's Note</div>
+        <div class="insight-text">${d.insight.text}</div>
+        ${apiConfigured() ? `<button class="reminder-toggle" ${state.coachLoading ? "disabled" : ""} onclick="refreshCoachNote(true)">${state.coachLoading ? "Analyzing…" : "✨ Get AI analysis"}</button>` : ""}
+      </div>
+    </div>`;
+  }
 
   if (d.bests.bestPct || d.bests.mostMakes) {
     html += `<div style="margin-bottom:18px"><div class="section-label" style="margin:0 0 8px">Personal Bests</div>`;
