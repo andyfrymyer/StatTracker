@@ -1510,7 +1510,7 @@ function renderDashboard() {
     const zColors = { close: "var(--blue)", mid: "var(--orange)", long: "var(--green)" };
     html += `<div class="card">
       <div class="chart-title" style="padding:0 0 4px">Shooting by Distance</div>
-      <div style="font-size:11px;color:var(--gray);margin-bottom:10px">All sessions combined. Swishes counted separately from makes, as DribbleUp reports them.</div>`;
+      <div style="font-size:11px;color:var(--gray);margin-bottom:10px">All sessions combined. FG% is makes ÷ attempts; swish % is a separate shot-quality measure.</div>`;
     for (const z of d.zoneStats) {
       if (z.attempts === 0) continue;
       const barPct = z.pct !== null ? Math.min(100, z.pct) : 0;
