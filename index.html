@@ -130,6 +130,9 @@
   .field-tag.derived { background: rgba(217,164,65,0.18); color: #d9a441; }
   .ocr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--gray); margin-bottom:14px; padding: 10px 12px; background: var(--navy-light); border:1px solid var(--navy-line); border-radius:10px; }
   .ocr-legend span { display:inline-flex; align-items:center; gap:5px; }
+  .badge-chip { display:inline-flex; align-items:center; gap:6px; background:var(--navy-light); border:1px solid var(--navy-line); border-radius:999px; padding:5px 11px; font-size:11.5px; color:#e4e9f1; margin:0 6px 6px 0; }
+  .badge-grade { font-weight:800; font-size:11px; color:var(--navy); background:var(--orange); border-radius:4px; padding:1px 5px; }
+  .badge-zone { font-size:9.5px; color:var(--gray); text-transform:uppercase; letter-spacing:0.04em; }
   .legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
   .spin { display:inline-block; width:12px; height:12px; border: 2px solid var(--navy-line); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -343,6 +346,7 @@ let state = {
   ocrStatus: "",
   lastOcrRaw: "",
   showOcrDebug: false,
+  editingId: null,
   apiBase: "",
   apiPin: "",
   syncStatus: "", // "", "syncing", "synced", "error", "offline"
@@ -351,7 +355,7 @@ function emptyShooting() {
   return { attempts: "", makes: "", swishes: "", spinRate: "", releaseTime: "", shotArc: "", shotForm: "", shotType: "", duration: "", intensity: "", label: "Shootaround",
     closeMakes: "", midMakes: "", longMakes: "",
     closeAttempts: "", midAttempts: "", longAttempts: "",
-    closeSwishes: "", midSwishes: "", longSwishes: "" };
+    closeSwishes: "", midSwishes: "", longSwishes: "", badges: [] };
 }
 function emptyDribbling() { return { drillName: "Tight Handles", points: "", reps: "", duration: "" }; }
 
@@ -518,6 +522,7 @@ window.handleAdd = function () {
       closeMakes: s.closeMakes === "" ? null : Number(s.closeMakes),
       midMakes: s.midMakes === "" ? null : Number(s.midMakes),
       longMakes: s.longMakes === "" ? null : Number(s.longMakes),
+      badges: Array.isArray(s.badges) && s.badges.length ? s.badges : null,
       closeAttempts: s.closeAttempts === "" ? null : Number(s.closeAttempts),
       midAttempts: s.midAttempts === "" ? null : Number(s.midAttempts),
       longAttempts: s.longAttempts === "" ? null : Number(s.longAttempts),
@@ -536,14 +541,67 @@ window.handleAdd = function () {
       duration: d.duration === "" ? null : Number(d.duration),
     };
   }
-  state.sessions = [...state.sessions, entry].sort((a, b) => a.date.localeCompare(b.date));
-  persist();
-  pushSessionToApi(entry);
+  if (state.editingId) {
+    // Keep the original id so the update replaces the record rather than
+    // creating a duplicate, both locally and on the server.
+    entry.id = state.editingId;
+    state.sessions = state.sessions.map((s) => (s.id === state.editingId ? entry : s))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    state.editingId = null;
+    persist();
+    pushSessionToApi(entry);
+    showToast("Session updated");
+  } else {
+    state.sessions = [...state.sessions, entry].sort((a, b) => a.date.localeCompare(b.date));
+    persist();
+    pushSessionToApi(entry);
+    showToast("Session logged");
+  }
   state.shooting = emptyShooting();
   state.dribbling = emptyDribbling();
+  state.date = todayStr();
   state.time = nowTimeStr();
   state.tab = "dashboard";
-  showToast("Session logged");
+  render();
+};
+window.startEdit = function (id) {
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return;
+  state.editingId = id;
+  state.date = s.date;
+  state.time = s.time || nowTimeStr();
+  state.type = s.type;
+  const str = (v) => (v === null || v === undefined ? "" : String(v));
+  if (s.type === "shooting") {
+    state.shooting = {
+      ...emptyShooting(),
+      label: s.label || "Shootaround",
+      attempts: str(s.attempts), makes: str(s.makes), swishes: str(s.swishes),
+      spinRate: str(s.spinRate), releaseTime: str(s.releaseTime), shotArc: str(s.shotArc),
+      shotForm: str(s.shotForm), shotType: str(s.shotType), duration: str(s.duration), intensity: str(s.intensity),
+      closeAttempts: str(s.closeAttempts), closeMakes: str(s.closeMakes), closeSwishes: str(s.closeSwishes),
+      midAttempts: str(s.midAttempts), midMakes: str(s.midMakes), midSwishes: str(s.midSwishes),
+      longAttempts: str(s.longAttempts), longMakes: str(s.longMakes), longSwishes: str(s.longSwishes),
+      badges: Array.isArray(s.badges) ? s.badges : [],
+    };
+  } else {
+    state.dribbling = {
+      ...emptyDribbling(),
+      drillName: s.drillName || "Tight Handles",
+      points: str(s.points), reps: str(s.reps), duration: str(s.duration),
+    };
+  }
+  state.tab = "log";
+  state.error = "";
+  render();
+};
+window.cancelEdit = function () {
+  state.editingId = null;
+  state.shooting = emptyShooting();
+  state.dribbling = emptyDribbling();
+  state.date = todayStr();
+  state.time = nowTimeStr();
+  state.tab = "dashboard";
   render();
 };
 window.handleDelete = function (id) {
@@ -683,6 +741,12 @@ function applyVisionResult(v) {
     if (!state.shooting.attempts && totalAtt > 0) state.shooting.attempts = String(totalAtt);
     return { kind: "zones", filled };
   }
+  if (v.type === "badges") {
+    const list = Array.isArray(v.badges) ? v.badges.filter((b) => b && b.name) : [];
+    if (!list.length) return null;
+    state.shooting.badges = list;
+    return { kind: "badges", filled: ["badges"], count: list.length };
+  }
   if (v.type === "dribbling") {
     state.type = "dribbling";
     if (v.drillName) state.dribbling.drillName = v.drillName;
@@ -738,7 +802,7 @@ window.handleScreenshotImport = async function (input) {
 
   const summary = { shooting: 0, zones: 0, dribbling: 0, unknown: 0 };
   let sawShooting = false, sawZones = false, swapped = false, lowConf = false;
-  let usedVision = false, visionFellBack = false;
+  let usedVision = false, visionFellBack = false, sawBadges = false;
   const rawTexts = [];
 
   try {
@@ -758,6 +822,7 @@ window.handleScreenshotImport = async function (input) {
             if (applied.kind === "zones") { summary.zones++; sawZones = true; }
             else if (applied.kind === "shooting") { summary.shooting++; sawShooting = true; }
             else if (applied.kind === "dribbling") { summary.dribbling++; }
+            else if (applied.kind === "badges") { summary.badges = (summary.badges || 0) + applied.count; sawBadges = true; }
             state.shooting._ocrFilled = [...new Set([...(state.shooting._ocrFilled || []), ...applied.filled])];
             usedVision = true;
             continue;
@@ -843,6 +908,7 @@ window.handleScreenshotImport = async function (input) {
       if (sawShooting) parts.push("session stats");
       if (sawZones) parts.push("zone breakdown");
       if (summary.dribbling) parts.push("dribbling session");
+      if (sawBadges) parts.push(`${summary.badges} badge${summary.badges === 1 ? "" : "s"}`);
       const skipped = summary.unknown ? ` (${summary.unknown} not recognized)` : "";
       if (visionFellBack) parts.push("(fell back to basic OCR)");
       showToast(swapped
@@ -941,6 +1007,31 @@ window.exportData = function () {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 };
+window.exportCsv = function () {
+  const cols = ["date","time","type","label","attempts","makes","swishes","closeAttempts","closeMakes","closeSwishes","midAttempts","midMakes","midSwishes","longAttempts","longMakes","longSwishes","spinRate","releaseTime","shotArc","intensity","duration","shotForm","shotType","drillName","points","reps"];
+  const headers = ["Date","Time","Type","Session/Drill","Attempts","Makes","Swishes","Close Att","Close Makes","Close Swishes","Mid Att","Mid Makes","Mid Swishes","Long Att","Long Makes","Long Swishes","Spin Rate %","Release Time %","Shot Arc %","Intensity %","Duration (min)","Shot Form","Shot Type","Drill","Points","Reps","FG%"];
+  const esc = (v) => {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const rows = [...state.sessions].sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
+  const lines = [headers.join(",")];
+  for (const s of rows) {
+    const vals = cols.map((c) => esc(c === "label" ? (s.type === "shooting" ? s.label : "") : s[c]));
+    const fg = s.type === "shooting" && s.attempts > 0 ? Math.round((s.makes / s.attempts) * 1000) / 10 : "";
+    vals.push(esc(fg));
+    lines.push(vals.join(","));
+  }
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `ella-sessions-${todayStr()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("CSV exported");
+};
+
 window.triggerImport = function () { document.getElementById("importFile").click(); };
 document.getElementById("importFile").addEventListener("change", function (e) {
   const file = e.target.files[0];
@@ -1092,7 +1183,25 @@ function computeDerived() {
   }
   const latestForm = shootingByDate.filter((s) => s.shotForm).slice(-1)[0];
 
-  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm };
+  // Badge collection: unique by name, keeping the best grade seen and how many
+  // times it's been earned.
+  const gradeRank = { "A+": 9, "A": 8, "A-": 7, "B+": 6, "B": 5, "B-": 4, "C+": 3, "C": 2, "C-": 1 };
+  const badgeMap = {};
+  for (const s of shootingByDate) {
+    if (!Array.isArray(s.badges)) continue;
+    for (const b of s.badges) {
+      if (!b || !b.name) continue;
+      const key = b.name;
+      if (!badgeMap[key]) badgeMap[key] = { name: b.name, grade: b.grade || null, zone: b.zone || null, count: 0, lastDate: s.date };
+      badgeMap[key].count++;
+      badgeMap[key].lastDate = s.date;
+      const cur = badgeMap[key].grade, next = b.grade;
+      if (next && (!cur || (gradeRank[next] || 0) > (gradeRank[cur] || 0))) badgeMap[key].grade = next;
+    }
+  }
+  const badgeList = Object.values(badgeMap).sort((a, b) => (gradeRank[b.grade] || 0) - (gradeRank[a.grade] || 0) || b.count - a.count);
+
+  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm, badgeList };
 }
 
 /* ---------- render ---------- */
@@ -1305,6 +1414,14 @@ function renderDashboard() {
     </div>
     <div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>`;
   }
+  if (d.badgeList && d.badgeList.length) {
+    html += `<div class="card">
+      <div class="chart-title" style="padding:0 0 4px">Badges Earned</div>
+      <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Best grade achieved for each, across all sessions.</div>
+      <div>${d.badgeList.map((b) => `<span class="badge-chip">${b.grade ? `<span class="badge-grade">${b.grade}</span>` : ""}${b.name}${b.count > 1 ? `<span class="badge-zone">×${b.count}</span>` : ""}</span>`).join("")}</div>
+    </div>`;
+  }
+
   if (d.hasZoneAttempts) {
     const zColors = { close: "var(--blue)", mid: "var(--orange)", long: "var(--green)" };
     html += `<div class="card">
@@ -1423,7 +1540,10 @@ function renderDashboard() {
     }
     html += `<div class="session-row">
       <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}</div>
+      <span style="display:flex;gap:2px;flex-shrink:0">
+      <button class="del-btn" onclick="startEdit('${s.id}')" aria-label="Edit session"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       <button class="del-btn" onclick="handleDelete('${s.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+      </span>
     </div>`;
   }
 
@@ -1431,6 +1551,7 @@ function renderDashboard() {
 
   html += `<div style="text-align:center;margin-top:18px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
     <button class="btn-link" onclick="printRecap()">Print/share recap</button>
+    <button class="btn-link" onclick="exportCsv()">Export CSV</button>
     <button class="btn-link" onclick="exportData()">Export data (JSON)</button>
     <button class="btn-link" onclick="triggerImport()">Import data (JSON)</button>
     <button class="btn-link" onclick="clearAll()">Clear all data</button>
@@ -1733,6 +1854,13 @@ function renderLogForm() {
   const s = state.shooting, dr = state.dribbling;
   let html = `<div style="padding:0 20px">`;
 
+  if (state.editingId) {
+    html += `<div style="background:rgba(95,208,165,0.10);border:1px solid var(--green);border-radius:10px;padding:11px 13px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <span style="font-size:12.5px;color:#d7f5e9">Editing an existing session</span>
+      <button class="btn-ghost" style="padding:6px 12px;font-size:11.5px" onclick="cancelEdit()">Cancel</button>
+    </div>`;
+  }
+
   html += `<div class="import-card">
     <input type="file" id="f-screenshot" accept="image/*" multiple style="display:none" onchange="handleScreenshotImport(this)" ${state.ocrBusy ? "disabled" : ""} />
     <button class="btn-ghost" ${state.ocrBusy ? "disabled" : ""} onclick="document.getElementById('f-screenshot').click()">📷 Import from Screenshot</button>
@@ -1808,6 +1936,13 @@ function renderLogForm() {
       ${fieldHtml("Shot arc (%)" + ocrTag(s, "shotArc"), `<input class="input${ocrClass(s, "shotArc")}" id="f-shooting-shotArc" type="number" min="0" max="100" value="${s.shotArc}" oninput="updateShooting('shotArc', this.value)" />`)}
       ${fieldHtml("Intensity (%)" + ocrTag(s, "intensity"), `<input class="input${ocrClass(s, "intensity")}" id="f-shooting-intensity" type="number" min="0" max="100" value="${s.intensity}" oninput="updateShooting('intensity', this.value)" />`)}
     </div>`;
+    if (Array.isArray(s.badges) && s.badges.length) {
+      html += `<div class="field">
+        <label>Badges captured <span class="field-tag read">scanned</span></label>
+        <div style="margin-top:4px">${s.badges.map((b) => `<span class="badge-chip">${b.grade ? `<span class="badge-grade">${b.grade}</span>` : ""}${b.name}${b.zone ? `<span class="badge-zone">${b.zone}</span>` : ""}</span>`).join("")}</div>
+        <button type="button" class="btn-link" style="margin-top:4px" onclick="updateShooting('badges', [])">Clear badges</button>
+      </div>`;
+    }
     html += fieldHtml("Shot form" + ocrTag(s, "shotForm"), `<input class="input${ocrClass(s, "shotForm")}" id="f-shooting-shotForm" type="text" value="${s.shotForm}" placeholder="Consistent / Inconsistent" oninput="updateShooting('shotForm', this.value)" />`);
   } else {
     html += fieldHtml("Drill name", `<input class="input" id="f-dribbling-drillName" type="text" value="${dr.drillName}" placeholder="Tight Handles" oninput="updateDribbling('drillName', this.value)" />`);
@@ -1819,7 +1954,7 @@ function renderLogForm() {
   }
 
   if (state.error) html += `<div style="color:#ff8a8a;font-size:12.5px;margin-bottom:10px">${state.error}</div>`;
-  html += `<button class="btn-primary" style="width:100%;margin-top:6px" onclick="handleAdd()">Log Session</button>`;
+  html += `<button class="btn-primary" style="width:100%;margin-top:6px" onclick="handleAdd()">${state.editingId ? "Save Changes" : "Log Session"}</button>`;
   html += `</div>`;
   return html;
 }
