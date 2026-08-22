@@ -172,6 +172,7 @@ const PIN_KEY = "ella-pin-standalone";
 const API_BASE_KEY = "ella-api-base-standalone";
 const API_PIN_KEY = "ella-api-pin-standalone";
 const COACH_CACHE_KEY = "ella-coach-note-standalone";
+const PROFILE_KEY = "ella-profile-standalone";
 // Baked-in default so a fresh browser/device connects automatically without
 // re-typing the URL. Safe to make public — it's not a secret, just an address.
 // Leave as "" if you don't want a default (e.g. before you've deployed one).
@@ -348,8 +349,9 @@ let state = {
   lastOcrRaw: "",
   showOcrDebug: false,
   editingId: null,
-  coachNote: null,      // { summary, focus, goals, benchmarks, generatedAt, sessionCount }
+  coachNote: null,      // { summary, progress, focus, plan, goals, dataGaps, generatedAt, sessionCount }
   coachLoading: false,
+  profile: "",          // free-text context about the player, for the AI note
   apiBase: "",
   apiPin: "",
   syncStatus: "", // "", "syncing", "synced", "error", "offline"
@@ -379,6 +381,9 @@ function load() {
     if (raw) state.coachNote = JSON.parse(raw);
   } catch (e) { console.error(e); }
   try {
+    state.profile = localStorage.getItem(PROFILE_KEY) || "";
+  } catch (e) { console.error(e); }
+  try {
     const storedBase = localStorage.getItem(API_BASE_KEY);
     // null = never set on this device (use default). "" = user explicitly disconnected — respect that.
     state.apiBase = storedBase !== null ? storedBase : DEFAULT_API_BASE;
@@ -392,6 +397,11 @@ function persist() {
 function persistGoals() {
   try { localStorage.setItem(GOALS_KEY, JSON.stringify(state.goals)); }
   catch (e) { showToast("Couldn't save goals."); }
+}
+// Stays on this device — it's a couple of lines of context, not synced data.
+function persistProfile() {
+  try { localStorage.setItem(PROFILE_KEY, state.profile); }
+  catch (e) { showToast("Couldn't save profile."); }
 }
 function apiConfigured() { return !!state.apiBase; }
 function apiError(message, status) {
@@ -800,6 +810,55 @@ function applyVisionResult(v) {
 }
 
 // --- AI coaching analysis ---------------------------------------------------
+// The dashboard already works out weekly splits, zone percentages, mechanics
+// trends and streaks. Sending that alongside the raw rows means the model
+// spends its budget on coaching rather than on arithmetic it can get wrong,
+// and it reads the same numbers the app is showing on screen.
+function buildCoachPayload() {
+  const d = computeDerived();
+  const shooting = d.shootingSessions;
+  const prev = state.coachNote;
+  return {
+    profile: state.profile || null,
+    goals: state.goals,
+    analysis: {
+      sessionCount: state.sessions.length,
+      shootingSessionCount: shooting.length,
+      totalAttempts: shooting.reduce((a, s) => a + s.attempts, 0),
+      totalMakes: shooting.reduce((a, s) => a + s.makes, 0),
+      totalSwishes: shooting.reduce((a, s) => a + (s.swishes || 0), 0),
+      overallPct: d.overallPct,
+      zones: d.zoneStats,
+      weekly: d.weekly.map((w) => ({
+        week: w.week, attempts: w.attempts, makes: w.makes,
+        shootingPct: w.shootingPct, dribbleMin: w.dribbleMin,
+      })),
+      thisWeek: { attempts: d.thisWeek.attempts, makes: d.thisWeek.makes, dribbleMin: d.thisWeek.dribbleMin },
+      thisMonth: d.thisMonth,
+      lastMonth: d.lastMonth,
+      // Each entry is the latest reading against the average of every prior
+      // session, so a one-off reading can't be mistaken for a trend.
+      mechanics: d.mechanics,
+      shotForm: { counts: d.formCounts, latest: (d.latestForm && d.latestForm.shotForm) || null },
+      badges: d.badgeList,
+      streaks: { currentDays: d.dayStreak, longestDays: d.bests.longestStreak, consecutiveWeeks: d.weekStreak },
+      bestSessionPct: d.bests.bestPct ? d.bests.bestPct.pct : null,
+    },
+    // Lets the next note say whether the last focus was acted on, instead of
+    // starting from nothing every time.
+    previousNote: prev ? {
+      generatedAt: prev.generatedAt || null,
+      atSessionCount: prev.sessionCount || null,
+      summary: prev.summary || null,
+      focus: prev.focus || null,
+    } : null,
+    sessions: state.sessions.map((s) => {
+      const c = { ...s };
+      delete c.id;
+      return c;
+    }),
+  };
+}
 // This is the slowest call the app makes, and it gets slower as sessions pile
 // up, because the model reasons over every session before it answers.
 async function postCoachNote(payload) {
@@ -841,15 +900,7 @@ window.refreshCoachNote = async function (force) {
 
   state.coachLoading = true; render();
   try {
-    const payload = {
-      sessions: state.sessions.map((s) => {
-        const c = { ...s };
-        delete c.id;
-        return c;
-      }),
-      goals: state.goals,
-    };
-    const note = await postCoachNote(payload);
+    const note = await postCoachNote(buildCoachPayload());
     if (note && note.summary) {
       note.generatedAt = new Date().toISOString();
       note.sessionCount = state.sessions.length;
@@ -1395,6 +1446,16 @@ function render() {
   }
 }
 
+window.updateProfile = function (val) { state.profile = val; persistProfile(); };
+function renderProfileCard() {
+  return `<div class="card">
+    <div class="section-label" style="margin:0 0 10px">Player Context</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:12px;line-height:1.5">A few lines about the player — position, height, what her team coach is working on, anything in season right now. The AI note reads this, so the more it knows the less generic the advice.</div>
+    <div class="field">
+      <textarea class="input" id="f-profile" rows="4" style="resize:vertical;line-height:1.5" placeholder="e.g. 14U point guard, 5'4&quot;, plays up an age group. Team coach wants her creating off the dribble. Travel season through November." oninput="updateProfile(this.value)">${state.profile}</textarea>
+    </div>
+  </div>`;
+}
 function renderSyncCard() {
   return `<div class="card sync-card">
     <div class="section-label" style="margin:0 0 10px">Cloud Sync (Railway)</div>
@@ -1470,7 +1531,13 @@ function renderDashboard() {
         <button class="btn-link" style="font-size:10.5px" ${state.coachLoading ? "disabled" : ""} onclick="refreshCoachNote(true)">${state.coachLoading ? "Analyzing…" : "Refresh"}</button>
       </div>
       <div class="insight-text" style="margin-bottom:10px">${note.summary}</div>
+      ${note.progress ? `<div style="font-size:12.5px;color:#cbd3e0;line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Since last note</strong>${note.progress}</div>` : ""}
       ${note.focus ? `<div style="font-size:12.5px;color:#ffd9b3;background:rgba(244,123,32,0.10);border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${note.focus}</div>` : ""}
+      ${Array.isArray(note.plan) && note.plan.length ? `<div style="width:100%;margin-bottom:10px">
+        <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Next practice</div>
+        ${note.plan.map((p) => `<div style="font-size:12.5px;color:#e4e9f1;line-height:1.45;margin-bottom:7px;padding-left:10px;border-left:2px solid var(--navy-line)"><strong>${p.drill}</strong> — ${p.target}${p.why ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-top:2px">${p.why}</div>` : ""}</div>`).join("")}
+      </div>` : ""}
+      ${note.dataGaps ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.45;margin-bottom:10px"><strong>Worth checking:</strong> ${note.dataGaps}</div>` : ""}
       ${note.benchmarks ? `<div style="font-size:12px;color:#cbd3e0;line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${note.benchmarks}</div>` : ""}
       ${note.goals && (note.goals.shots || note.goals.dribbleMinutes) ? `
         <div style="width:100%;border-top:1px solid var(--navy-line);padding-top:10px">
@@ -1693,6 +1760,7 @@ function renderDashboard() {
     </div>`;
   }
 
+  html += renderProfileCard();
   html += renderSyncCard();
 
   html += `<div style="text-align:center;margin-top:18px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
