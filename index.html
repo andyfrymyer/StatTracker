@@ -394,15 +394,44 @@ function persistGoals() {
   catch (e) { showToast("Couldn't save goals."); }
 }
 function apiConfigured() { return !!state.apiBase; }
+function apiError(message, status) {
+  const err = new Error(message);
+  err.status = status; // 0 = never reached the server, 408 = we gave up waiting
+  return err;
+}
 async function apiFetch(path, options) {
   options = options || {};
   const url = state.apiBase.replace(/\/$/, "") + path;
   const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
   if (state.apiPin) headers["x-app-pin"] = state.apiPin;
-  const res = await fetch(url, Object.assign({}, options, { headers }));
+  // Without a timeout a stalled request leaves the UI spinning forever, which
+  // is what a slow AI call looks like on a phone. Slow-by-nature endpoints
+  // pass their own timeoutMs.
+  const timeoutMs = options.timeoutMs || 30000;
+  const init = Object.assign({}, options, { headers });
+  delete init.timeoutMs;
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  let timer = null;
+  if (ctrl) {
+    init.signal = ctrl.signal;
+    timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  }
+  let res;
+  try {
+    res = await fetch(url, init);
+  } catch (e) {
+    const timedOut = e && e.name === "AbortError";
+    throw apiError(timedOut ? "timed out after " + Math.round(timeoutMs / 1000) + "s" : "network error", timedOut ? 408 : 0);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error("API " + res.status + " " + text);
+    // The API reports failures as {"error":"..."} — surface that instead of the
+    // raw body so callers can show the server's own explanation.
+    let detail = text;
+    try { const parsed = JSON.parse(text); if (parsed && parsed.error) detail = String(parsed.error); } catch (e) {}
+    throw apiError(detail || ("API " + res.status), res.status);
   }
   try { return await res.json(); } catch (e) { return null; }
 }
@@ -480,11 +509,14 @@ window.disconnectApi = function () {
     render();
   });
 };
-function showToast(msg) {
+function showToast(msg, ms) {
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 1800);
+  // Clear any previous timer, or a toast that replaces an older one inherits
+  // the leftover countdown and flashes past before it can be read.
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => t.classList.remove("show"), ms || 1800);
 }
 
 /* ---------- actions (exposed to window for inline handlers) ---------- */
@@ -713,6 +745,7 @@ async function parseWithVision(file) {
   return await apiFetch("/api/vision-parse", {
     method: "POST",
     body: JSON.stringify({ imageBase64, mediaType }),
+    timeoutMs: 90000,
   });
 }
 // Maps a vision JSON result onto the form state. Returns the list of fields it
@@ -767,6 +800,37 @@ function applyVisionResult(v) {
 }
 
 // --- AI coaching analysis ---------------------------------------------------
+// This is the slowest call the app makes, and it gets slower as sessions pile
+// up, because the model reasons over every session before it answers.
+async function postCoachNote(payload) {
+  const send = () => apiFetch("/api/coach-note", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeoutMs: 120000,
+  });
+  try {
+    return await send();
+  } catch (e) {
+    // A 502 means the model replied but the server couldn't use the reply —
+    // in practice, JSON that came back cut off. That's borderline rather than
+    // permanent, so it's worth one more go before giving up.
+    if (e.status !== 502) throw e;
+    return await send();
+  }
+}
+// One generic message for every failure made a wrong PIN, a rate limit and a
+// server-side AI error impossible to tell apart from the phone.
+function coachErrorText(e) {
+  const status = e && e.status;
+  const detail = String((e && e.message) || "").trim();
+  if (status === 503) return "AI analysis isn't set up on the server yet";
+  if (status === 401) return "Server rejected the PIN — re-enter it under Cloud Sync";
+  if (status === 429) return detail || "Too many attempts — try again shortly";
+  if (status === 408) return "AI analysis timed out — the server took too long to answer";
+  if (status === 0) return "Can't reach the server — check your connection";
+  if (status === 502 || status === 500) return "Server couldn't finish the AI analysis" + (detail ? " (" + detail + ")" : "");
+  return "Couldn't get AI analysis" + (detail ? " — " + detail : "");
+}
 // Cached by session count so it doesn't re-bill the API on every page view —
 // it only goes stale when new sessions are logged.
 window.refreshCoachNote = async function (force) {
@@ -785,19 +849,17 @@ window.refreshCoachNote = async function (force) {
       }),
       goals: state.goals,
     };
-    const note = await apiFetch("/api/coach-note", { method: "POST", body: JSON.stringify(payload) });
+    const note = await postCoachNote(payload);
     if (note && note.summary) {
       note.generatedAt = new Date().toISOString();
       note.sessionCount = state.sessions.length;
       state.coachNote = note;
       try { localStorage.setItem(COACH_CACHE_KEY, JSON.stringify(note)); } catch (e) {}
     } else {
-      showToast("AI analysis returned nothing usable");
+      showToast("AI analysis returned nothing usable", 4000);
     }
   } catch (e) {
-    showToast(String(e.message || "").includes("503")
-      ? "AI analysis isn't set up on the server yet"
-      : "Couldn't get AI analysis — showing the basic note");
+    showToast(coachErrorText(e), 5000);
   } finally {
     state.coachLoading = false;
     render();
