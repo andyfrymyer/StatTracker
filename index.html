@@ -6,11 +6,11 @@
 <meta name="theme-color" content="#ffffff" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="apple-mobile-web-app-title" content="Ella Tracker" />
+<meta name="apple-mobile-web-app-title" content="ShootingIQ" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" href="icon-192.png" />
-<title>Ella Tracker</title>
+<title>ShootingIQ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
@@ -191,6 +191,9 @@
 
 <script>
 /* ---------- storage & helpers ---------- */
+// Storage keys keep their original names deliberately — they are internal to
+// the browser, and renaming them would strand each device's cached sessions,
+// saved PIN, player context and coach note behind keys nothing reads.
 const STORAGE_KEY = "ella-sessions-standalone";
 const GOALS_KEY = "ella-goals-standalone";
 const REMINDERS_KEY = "ella-reminders-standalone";
@@ -738,7 +741,7 @@ function maybeNotify(force) {
   const parts = [];
   if (pace.shotsBehind > 0) parts.push(`${pace.shotsBehind} shots`);
   if (pace.dribbleBehind > 0) parts.push(`${pace.dribbleBehind} DribbleUp min`);
-  new Notification("Ella Tracker", { body: `Behind pace this week: ${parts.join(" · ")} to stay on track.` });
+  new Notification("ShootingIQ", { body: `Behind pace this week: ${parts.join(" · ")} to stay on track.` });
   try { localStorage.setItem(LAST_NOTIFIED_KEY, today); } catch (e) {}
 }
 
@@ -1155,7 +1158,7 @@ window.printRecap = function () {
   const prevWeek = d.weekly.find((w) => w.week === prevWeekKey) || { attempts: 0, makes: 0, points: 0, dribbleMin: 0, shootingPct: null };
   const fgDelta = d.thisWeek.shootingPct !== null && prevWeek.shootingPct !== null ? Math.round((d.thisWeek.shootingPct - prevWeek.shootingPct) * 10) / 10 : null;
   recap.innerHTML = `
-    <div class="rp-title">ELLA / TRACKER — Weekly Recap</div>
+    <div class="rp-title">SHOOTING / IQ — Weekly Recap</div>
     <div class="rp-sub">Week of ${fmtShort(getMonday(todayStr()))} · Generated ${fmtShort(todayStr())}</div>
     <div class="rp-section">
       <div class="rp-label">Shooting</div>
@@ -1208,7 +1211,7 @@ window.exportData = function () {
   const blob = new Blob([JSON.stringify(state.sessions, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "ella-sessions.json";
+  a.href = url; a.download = "shootingiq-sessions.json";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 };
@@ -1231,7 +1234,7 @@ window.exportCsv = function () {
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `ella-sessions-${todayStr()}.csv`;
+  a.href = url; a.download = `shootingiq-sessions-${todayStr()}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast("CSV exported");
@@ -1446,12 +1449,14 @@ function computeDerived() {
       }
     : null;
 
-  // Logging the same workout twice from two screenshots is easy to do and hard
-  // to spot, and it quietly skews every total. Same day plus an identical
-  // attempt count is a strong enough signal to raise, not to act on.
+  // Logging one workout twice from two screenshots skews every total, but two
+  // real sessions back to back can share an attempt count, so matching
+  // attempts alone is not evidence. A double-log reproduces the session
+  // totals exactly — attempts, makes and swishes — which two different
+  // workouts effectively never do.
   const dupeMap = {};
   for (const s of shootingByDate) {
-    const key = s.date + "|" + s.attempts;
+    const key = [s.date, s.attempts, s.makes, s.swishes === null || s.swishes === undefined ? "" : s.swishes].join("|");
     (dupeMap[key] = dupeMap[key] || []).push(s);
   }
   const duplicates = Object.values(dupeMap)
@@ -1459,11 +1464,13 @@ function computeDerived() {
     .map((g) => ({
       date: g[0].date,
       attempts: g[0].attempts,
+      makes: g[0].makes,
       count: g.length,
       times: g.map((s) => s.time || null),
       ids: g.map((s) => s.id),
-      // The parses disagreeing is what makes it worth surfacing loudly.
-      conflicting: new Set(g.map((s) => `${s.makes}|${s.closeAttempts}|${s.midAttempts}`)).size > 1,
+      // Identical totals but different zone splits means the same screenshot
+      // was read two different ways — the one case worth stating outright.
+      conflicting: new Set(g.map((s) => `${s.closeAttempts}|${s.midAttempts}|${s.longAttempts}`)).size > 1,
     }));
 
   // DribbleUp reports a shot type per session; nothing aggregated it before, so
@@ -1505,7 +1512,7 @@ function render() {
     <div style="padding:28px 20px 18px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div>
-          <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">ELLA<span class="slash"></span>TRACKER</div>
+          <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">SHOOTING<span class="slash"></span>IQ</div>
           <div style="font-size:12.5px;color:var(--gray);margin-top:6px;letter-spacing:0.03em;text-transform:uppercase">Same Standards. Relentless Growth.</div>
         </div>
         <span class="sync-pill ${syncPillClass}">${syncDot}${syncPillText}</span>
@@ -1626,14 +1633,14 @@ function renderDashboard() {
   if (d.duplicates.length) {
     const dupText = d.duplicates.map((g) => {
       const when = g.times.filter(Boolean).join(" and ");
-      return `${g.count} sessions on ${fmtShort(g.date)} both logged ${g.attempts} attempts${when ? ` (${when})` : ""}`;
+      return `${g.count} sessions on ${fmtShort(g.date)} with identical totals — ${g.makes}/${g.attempts}${when ? ` (${when})` : ""}`;
     }).join("; ");
     const conflicting = d.duplicates.some((g) => g.conflicting);
     html += `<div class="reminder-banner alert">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <div style="flex:1">
-        <div class="reminder-title" style="color:var(--red)">Possible duplicate</div>
-        <div class="reminder-text">${dupText}. ${conflicting ? "The two readings disagree, so the totals above are counting one workout twice with conflicting numbers." : "That looks like one workout logged twice."} Check the session log below and delete whichever is wrong.</div>
+        <div class="reminder-title" style="color:var(--red)">Check these match up</div>
+        <div class="reminder-text">${dupText}. ${conflicting ? "The zone splits differ, so this looks like one screenshot read two different ways." : "If that was one workout logged twice, delete one in the session log below — otherwise ignore this."}</div>
       </div>
     </div>`;
   }
