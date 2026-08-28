@@ -823,6 +823,14 @@ function buildCoachPayload() {
     goals: state.goals,
     analysis: {
       sessionCount: state.sessions.length,
+      // Week is too coarse to show movement early on, so give it the session
+      // series outright rather than making it rebuild one from the raw rows.
+      bySession: d.bySession,
+      pctSpread: d.pctSpread,
+      // Same workout logged twice: the model should treat a flagged group as
+      // one session and say so, not read it as two days of practice.
+      possibleDuplicates: d.duplicates,
+      shotTypes: d.shotTypes,
       shootingSessionCount: shooting.length,
       totalAttempts: shooting.reduce((a, s) => a + s.attempts, 0),
       totalMakes: shooting.reduce((a, s) => a + s.makes, 0),
@@ -1371,7 +1379,84 @@ function computeDerived() {
   }
   const badgeList = Object.values(badgeMap).sort((a, b) => (gradeRank[b.grade] || 0) - (gradeRank[a.grade] || 0) || b.count - a.count);
 
-  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm, badgeList };
+  // --- Per-session series -----------------------------------------------
+  // Week is too coarse a bucket early on: a handful of sessions collapse into
+  // one or two bars and every chart built on them says nothing. The session is
+  // the finest grain that always has as many points as there are workouts.
+  const pct1 = (m, a) => (a > 0 ? Math.round((m / a) * 1000) / 10 : null);
+  const bySession = shootingByDate.map((s) => ({
+    date: s.date,
+    time: s.time || null,
+    label: s.label || null,
+    attempts: s.attempts,
+    makes: s.makes,
+    swishes: s.swishes === null || s.swishes === undefined ? null : s.swishes,
+    pct: pct1(s.makes, s.attempts),
+    swishPct: pct1(s.swishes || 0, s.attempts),
+    zones: ["close", "mid", "long"].reduce((acc, z) => {
+      const att = s[z + "Attempts"] || 0;
+      acc[z] = { attempts: att, makes: s[z + "Makes"] || 0, pct: pct1(s[z + "Makes"] || 0, att) };
+      return acc;
+    }, {}),
+    spinRate: s.spinRate ?? null,
+    releaseTime: s.releaseTime ?? null,
+    shotArc: s.shotArc ?? null,
+    intensity: s.intensity ?? null,
+    duration: s.duration ?? null,
+    shotForm: s.shotForm || null,
+    shotType: s.shotType || null,
+  }));
+
+  // A single career average hides how much a session-to-session figure moves.
+  const pctVals = bySession.map((s) => s.pct).filter((v) => v !== null);
+  const pctSpread = pctVals.length
+    ? {
+        min: Math.min(...pctVals),
+        max: Math.max(...pctVals),
+        latest: pctVals[pctVals.length - 1],
+        avg: Math.round((pctVals.reduce((a, v) => a + v, 0) / pctVals.length) * 10) / 10,
+        count: pctVals.length,
+      }
+    : null;
+
+  // Logging the same workout twice from two screenshots is easy to do and hard
+  // to spot, and it quietly skews every total. Same day plus an identical
+  // attempt count is a strong enough signal to raise, not to act on.
+  const dupeMap = {};
+  for (const s of shootingByDate) {
+    const key = s.date + "|" + s.attempts;
+    (dupeMap[key] = dupeMap[key] || []).push(s);
+  }
+  const duplicates = Object.values(dupeMap)
+    .filter((g) => g.length > 1)
+    .map((g) => ({
+      date: g[0].date,
+      attempts: g[0].attempts,
+      count: g.length,
+      times: g.map((s) => s.time || null),
+      ids: g.map((s) => s.id),
+      // The parses disagreeing is what makes it worth surfacing loudly.
+      conflicting: new Set(g.map((s) => `${s.makes}|${s.closeAttempts}|${s.midAttempts}`)).size > 1,
+    }));
+
+  // DribbleUp reports a shot type per session; nothing aggregated it before, so
+  // "catch & shoot days go worse than relaxed days" was invisible.
+  const typeMap = {};
+  for (const s of shootingSessions) {
+    if (!s.shotType) continue;
+    const name = String(s.shotType).replace(/^\s*\d+%\s*/, "").trim().toLowerCase();
+    if (!name) continue;
+    if (!typeMap[name]) typeMap[name] = { shotType: name, attempts: 0, makes: 0, sessions: 0 };
+    typeMap[name].attempts += s.attempts;
+    typeMap[name].makes += s.makes;
+    typeMap[name].sessions += 1;
+  }
+  const shotTypes = Object.values(typeMap)
+    .map((t) => ({ ...t, pct: pct1(t.makes, t.attempts) }))
+    .sort((a, b) => b.attempts - a.attempts);
+
+  return { bySession, pctSpread, duplicates, shotTypes,
+    weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm, badgeList };
 }
 
 /* ---------- render ---------- */
@@ -1500,9 +1585,24 @@ function renderDashboard() {
   html += `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
     <div class="stat-card"><div style="margin-bottom:6px">${flame}</div><div class="stat-value">${d.dayStreak}<span class="stat-suffix">${d.dayStreak === 1 ? " day" : " days"}</span></div><div class="stat-label">Day Streak</div></div>
     <div class="stat-card"><div style="margin-bottom:6px">${flame}</div><div class="stat-value">${d.weekStreak}<span class="stat-suffix">${d.weekStreak === 1 ? "wk" : "wks"}</span></div><div class="stat-label">Week Streak</div></div>
-    <div class="stat-card"><div style="margin-bottom:6px">${target}</div><div class="stat-value">${d.overallPct !== null ? d.overallPct : "—"}<span class="stat-suffix">${d.overallPct !== null ? "%" : ""}</span></div><div class="stat-label">Career FG%</div></div>
+    <div class="stat-card"><div style="margin-bottom:6px">${target}</div><div class="stat-value">${d.pctSpread ? d.pctSpread.latest : (d.overallPct !== null ? d.overallPct : "—")}<span class="stat-suffix">${d.pctSpread || d.overallPct !== null ? "%" : ""}</span></div><div class="stat-label">${d.pctSpread ? `Last session · career ${d.overallPct}%` : "Career FG%"}</div></div>
     <div class="stat-card"><div style="margin-bottom:6px">${zap}</div><div class="stat-value">${d.totalPoints}</div><div class="stat-label">Dribble Pts</div></div>
   </div>`;
+
+  if (d.duplicates.length) {
+    const dupText = d.duplicates.map((g) => {
+      const when = g.times.filter(Boolean).join(" and ");
+      return `${g.count} sessions on ${fmtShort(g.date)} both logged ${g.attempts} attempts${when ? ` (${when})` : ""}`;
+    }).join("; ");
+    const conflicting = d.duplicates.some((g) => g.conflicting);
+    html += `<div class="reminder-banner" style="border-color:#ff8a8a">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff8a8a" stroke-width="2" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div style="flex:1">
+        <div class="reminder-title" style="color:#ff8a8a">Possible duplicate</div>
+        <div class="reminder-text">${dupText}. ${conflicting ? "The two readings disagree, so the totals above are counting one workout twice with conflicting numbers." : "That looks like one workout logged twice."} Check the session log below and delete whichever is wrong.</div>
+      </div>
+    </div>`;
+  }
 
   const pace = computePace(d.thisWeek, state.goals);
   const paceParts = [];
@@ -1613,19 +1713,47 @@ function renderDashboard() {
     ${trendRow("DribbleUp Min", d.thisMonth.dribbleMin, d.thisMonth.dribbleMin, d.lastMonth.dribbleMin, "")}
   </div>`;
 
-  if (d.weekly.some((w) => w.shootingPct !== null)) {
+  if (d.pctSpread && d.pctSpread.count >= 2) {
+    html += `<div class="card" style="padding:14px 8px 6px">
+      <div class="chart-title">Shooting % by Session</div>
+      <div style="font-size:11px;color:var(--gray);padding:0 6px 6px">${d.pctSpread.min}–${d.pctSpread.max}% across ${d.pctSpread.count} sessions · average ${d.pctSpread.avg}%</div>
+      <canvas id="chartFgSession" height="180"></canvas>
+    </div>`;
+  }
+  // Long range needs enough attempts to mean anything; below that it is a flat
+  // line at zero that makes the two real zones harder to read.
+  const zonesWorthCharting = d.zoneStats.filter((z) => z.attempts >= 5);
+  if (d.bySession.length >= 2 && zonesWorthCharting.length >= 1) {
+    const thin = d.zoneStats.filter((z) => z.attempts > 0 && z.attempts < 5);
+    html += `<div class="card" style="padding:14px 8px 6px">
+      <div class="chart-title">Zone FG% by Session</div>
+      ${thin.length ? `<div style="font-size:11px;color:var(--gray);padding:0 6px 6px">${thin.map((z) => `${z.label} left out — only ${z.attempts} attempt${z.attempts === 1 ? "" : "s"} logged`).join("; ")}</div>` : ""}
+      <canvas id="chartZoneSession" height="180"></canvas>
+    </div>`;
+  }
+  // Weekly views stay, but only once there are two weeks to compare.
+  const weeksWithShooting = d.weekly.filter((w) => w.hasShooting).length;
+  if (weeksWithShooting >= 4 && d.weekly.some((w) => w.shootingPct !== null)) {
     html += `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Shooting % by Week</div><canvas id="chartFg" height="180"></canvas></div>`;
   }
-  if (d.weekly.some((w) => w.hasShooting)) {
+  if (weeksWithShooting >= 4) {
     html += `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Attempts vs Makes</div><canvas id="chartAttempts" height="180"></canvas></div>`;
   }
   if (d.hasZoneData) {
+    const zoneColor = { close: "var(--blue)", mid: "var(--orange)", long: "var(--green)" };
     html += `<div style="display:flex;gap:10px;margin-bottom:14px">
-      <div class="zone-pill"><div class="zone-dot" style="background:var(--blue)"></div><div style="font-size:17px;font-weight:700;color:#fff">${d.totalClose}</div><div style="font-size:10px;color:var(--gray)">Close</div></div>
-      <div class="zone-pill"><div class="zone-dot" style="background:var(--orange)"></div><div style="font-size:17px;font-weight:700;color:#fff">${d.totalMid}</div><div style="font-size:10px;color:var(--gray)">Mid</div></div>
-      <div class="zone-pill"><div class="zone-dot" style="background:var(--green)"></div><div style="font-size:17px;font-weight:700;color:#fff">${d.totalLong}</div><div style="font-size:10px;color:var(--gray)">Long</div></div>
+      ${d.zoneStats.map((z) => `<div class="zone-pill"><div class="zone-dot" style="background:${zoneColor[z.zone]}"></div><div style="font-size:17px;font-weight:700;color:#fff">${z.pct !== null ? z.pct + "%" : "—"}</div><div style="font-size:10px;color:var(--gray)">${z.zone === "close" ? "Close" : z.zone === "mid" ? "Mid" : "Long"} · ${z.makes}/${z.attempts}</div></div>`).join("")}
     </div>
-    <div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>`;
+    ${weeksWithShooting >= 4 ? `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>` : ""}`;
+  }
+  if (d.shotTypes.length >= 2) {
+    html += `<div class="card">
+      <div class="chart-title" style="padding:0 0 8px">By Shot Type</div>
+      ${d.shotTypes.map((t) => `<div class="trend-row">
+        <span class="trend-label">${t.shotType}<span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">${t.makes}/${t.attempts} over ${t.sessions} session${t.sessions === 1 ? "" : "s"}</span></span>
+        <span class="trend-value">${t.pct}%</span>
+      </div>`).join("")}
+    </div>`;
   }
   if (d.badgeList && d.badgeList.length) {
     html += `<div class="card">
@@ -2186,6 +2314,45 @@ function drawCharts() {
       data: { labels: d.weekly.map((w) => w.label), datasets: [{ label: "FG%", data: d.weekly.map((w) => w.shootingPct), borderColor: orange, backgroundColor: orange, tension: 0.35, spanGaps: true, pointRadius: 3 }] },
       options: { responsive: true, plugins: { legend: { display: false } }, scales: {
         x: { ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } },
+        y: { min: 0, max: 100, ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } }
+      } }
+    });
+  }
+  // Sessions are discrete workouts at irregular intervals, so bars: a line
+  // would draw a slope between two dates that has no reading in between.
+  const sessionLabel = (s) => fmtShort(s.date) + (s.time ? " " + fmtTime(s.time) : "");
+  if (document.getElementById("chartFgSession")) {
+    destroyChart("fgSession");
+    charts.fgSession = new Chart(document.getElementById("chartFgSession"), {
+      type: "bar",
+      data: { labels: d.bySession.map(sessionLabel), datasets: [{ label: "FG%", data: d.bySession.map((s) => s.pct), backgroundColor: orange, borderRadius: 4 }] },
+      options: { responsive: true, plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: (c) => { const s = d.bySession[c.dataIndex]; return `${s.makes}/${s.attempts} · ${s.pct}%`; } } } }, scales: {
+        x: { ticks: { color: gray, font: { size: 9 }, maxRotation: 0, autoSkip: false }, grid: { display: false } },
+        y: { min: 0, max: 100, ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } }
+      } }
+    });
+  }
+  if (document.getElementById("chartZoneSession")) {
+    destroyChart("zoneSession");
+    // One step darker than the app's blue/orange so both sit inside the
+    // dark-surface lightness band; checked with the palette validator.
+    const zoneSeries = [
+      { key: "close", label: "Close", color: "#4f8fc9" },
+      { key: "mid", label: "Mid", color: "#dd6f14" },
+      { key: "long", label: "Long", color: "#3f9e78" },
+    ].filter((z) => d.zoneStats.find((s) => s.zone === z.key && s.attempts >= 5));
+    charts.zoneSession = new Chart(document.getElementById("chartZoneSession"), {
+      type: "line",
+      data: { labels: d.bySession.map(sessionLabel), datasets: zoneSeries.map((z) => ({
+        label: z.label, data: d.bySession.map((s) => s.zones[z.key].pct),
+        borderColor: z.color, backgroundColor: z.color, borderWidth: 2,
+        tension: 0.25, spanGaps: true, pointRadius: 4,
+      })) },
+      options: { responsive: true, plugins: { legend: { labels: { color: gray, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => { const z = zoneSeries[c.datasetIndex].key, s = d.bySession[c.dataIndex];
+          return `${zoneSeries[c.datasetIndex].label}: ${s.zones[z].makes}/${s.zones[z].attempts} · ${s.zones[z].pct}%`; } } } }, scales: {
+        x: { ticks: { color: gray, font: { size: 9 }, maxRotation: 0, autoSkip: false }, grid: { display: false } },
         y: { min: 0, max: 100, ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } }
       } }
     });
