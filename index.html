@@ -26,7 +26,7 @@
     --ink-2: #6b6b6b;
     --line: #e4e4e4;
     --orange: #f47b20;
-    --green: #1f9d63;
+    --green: #177a4d;   /* 4.9:1 on the card surface — the lighter green failed at 12px */
     --blue: #2f6fb5;
     --red: #c62f37;
     /* Legacy names, kept so existing rules and inline styles still resolve. */
@@ -1513,7 +1513,6 @@ function render() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div>
           <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">SHOOTING<span class="slash"></span>IQ</div>
-          <div style="font-size:12.5px;color:var(--gray);margin-top:6px;letter-spacing:0.03em;text-transform:uppercase">Same Standards. Relentless Growth.</div>
         </div>
         <span class="sync-pill ${syncPillClass}">${syncDot}${syncPillText}</span>
       </div>
@@ -1792,7 +1791,7 @@ function renderDashboard() {
   if (d.hasZoneData) {
     const zoneColor = { close: "var(--blue)", mid: "var(--orange)", long: "var(--green)" };
     html += `<div style="display:flex;gap:10px;margin-bottom:14px">
-      ${d.zoneStats.map((z) => `<div class="zone-pill"><div class="zone-dot" style="background:${zoneColor[z.zone]}"></div><div style="font-size:17px;font-weight:700;color:#fff">${z.pct !== null ? z.pct + "%" : "—"}</div><div style="font-size:10px;color:var(--gray)">${z.zone === "close" ? "Close" : z.zone === "mid" ? "Mid" : "Long"} · ${z.makes}/${z.attempts}</div></div>`).join("")}
+      ${d.zoneStats.map((z) => `<div class="zone-pill"><div class="zone-dot" style="background:${zoneColor[z.zone]}"></div><div style="font-size:22px;font-weight:800;letter-spacing:-0.02em;color:var(--ink)">${z.pct !== null ? z.pct + "%" : "—"}</div><div style="font-size:12px;color:var(--ink-2);margin-top:2px">${z.zone === "close" ? "Close" : z.zone === "mid" ? "Mid" : "Long"} · ${z.makes}/${z.attempts}</div></div>`).join("")}
     </div>
     ${weeksWithShooting >= 4 ? `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>` : ""}`;
   }
@@ -1824,7 +1823,7 @@ function renderDashboard() {
       html += `<div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
           <span style="font-size:12.5px;color:var(--ink);font-weight:600">${z.label}</span>
-          <span style="font-size:12px;color:var(--gray)">${z.makes}/${z.attempts} · <strong style="color:#fff">${z.pct}%</strong>${z.swishes > 0 ? ` · ${z.swishPct}% swish` : ""}</span>
+          <span style="font-size:12px;color:var(--gray)">${z.makes}/${z.attempts} · <strong style="color:var(--ink)">${z.pct}%</strong>${z.swishes > 0 ? ` · ${z.swishPct}% swish` : ""}</span>
         </div>
         <div style="height:7px;border-radius:99px;background:var(--navy-line);overflow:hidden">
           <div style="height:100%;width:${barPct}%;background:${zColors[z.zone]};border-radius:99px"></div>
@@ -1896,7 +1895,7 @@ function renderDashboard() {
   html += `<div class="card" style="padding:14px 8px 6px">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px 10px">
       <button class="cal-nav-btn" onclick="calPrev()">‹</button>
-      <div style="font-size:13px;font-weight:700;color:#fff">${calLabel}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--ink)">${calLabel}</div>
       <button class="cal-nav-btn" ${state.calOffset >= 0 ? "disabled style='opacity:0.3'" : ""} onclick="calNext()">›</button>
     </div>
     <div class="cal-grid" style="padding:0 6px 10px">
