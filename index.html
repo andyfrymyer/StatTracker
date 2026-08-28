@@ -13,7 +13,7 @@
 <title>ShootingIQ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root {
@@ -290,15 +290,22 @@ function getMonthMatrix(year, month) {
   }
   return cells;
 }
-function computePace(thisWeek, goals) {
+// "tracks" says which activities she actually logs. A goal for something never
+// logged used to hold onTrack permanently false, so the banner could never read
+// on track and the daily reminder nagged for minutes she was not recording.
+function computePace(thisWeek, goals, tracks) {
+  const t = tracks || { shooting: true, dribbling: true };
   const monday = getMonday(todayStr());
   const daysElapsed = Math.floor((new Date(todayStr() + "T00:00:00") - new Date(monday + "T00:00:00")) / 86400000) + 1; // 1..7
-  const expectedShots = Math.round((goals.shots * daysElapsed) / 7);
-  const expectedDribbleMin = Math.round((goals.dribbleMinutes * daysElapsed) / 7);
+  const expectedShots = t.shooting ? Math.round((goals.shots * daysElapsed) / 7) : 0;
+  const expectedDribbleMin = t.dribbling ? Math.round((goals.dribbleMinutes * daysElapsed) / 7) : 0;
   const shotsBehind = Math.max(0, expectedShots - thisWeek.attempts);
   const dribbleBehind = Math.max(0, expectedDribbleMin - thisWeek.dribbleMin);
   const onTrack = shotsBehind === 0 && dribbleBehind === 0;
   return { daysElapsed, expectedShots, expectedDribbleMin, shotsBehind, dribbleBehind, onTrack };
+}
+function tracksOf(d) {
+  return { shooting: d.shootingSessions.length > 0, dribbling: d.dribblingSessions.length > 0 };
 }
 function computeInsight(sessions, weekly, dayStreak) {
   const shootSessions = sessions.filter((s) => s.type === "shooting").sort((a, b) => a.date.localeCompare(b.date));
@@ -397,6 +404,7 @@ let state = {
   coachNote: null,      // { summary, progress, focus, plan, goals, dataGaps, generatedAt, sessionCount }
   coachLoading: false,
   profile: "",          // free-text context about the player, for the AI note
+  notes: "",            // context for the session being logged right now
   apiBase: "",
   apiPin: "",
   syncStatus: "", // "", "syncing", "synced", "error", "offline"
@@ -443,12 +451,28 @@ function persistGoals() {
   try { localStorage.setItem(GOALS_KEY, JSON.stringify(state.goals)); }
   catch (e) { showToast("Couldn't save goals."); }
 }
-// Stays on this device — it's a couple of lines of context, not synced data.
+// Kept locally for instant reads; schedulePushPrefs mirrors it to the server.
 function persistProfile() {
   try { localStorage.setItem(PROFILE_KEY, state.profile); }
   catch (e) { showToast("Couldn't save profile."); }
 }
 function apiConfigured() { return !!state.apiBase; }
+let prefsPushTimer = null;
+function schedulePushPrefs() {
+  if (!apiConfigured()) return;
+  clearTimeout(prefsPushTimer);
+  prefsPushTimer = setTimeout(pushPrefs, 800);
+}
+async function pushPrefs() {
+  if (!apiConfigured()) return;
+  try {
+    await apiFetch("/api/prefs", { method: "PUT", body: JSON.stringify({
+      profile: state.profile || null,
+      coachNote: state.coachNote || null,
+    }) });
+    state.syncStatus = "synced";
+  } catch (e) { state.syncStatus = "error"; }
+}
 function apiError(message, status) {
   const err = new Error(message);
   err.status = status; // 0 = never reached the server, 408 = we gave up waiting
@@ -494,9 +518,20 @@ async function syncFromApi() {
   if (!apiConfigured()) return;
   state.syncStatus = "syncing"; render();
   try {
-    const [sessions, goals] = await Promise.all([apiFetch("/api/sessions"), apiFetch("/api/goals")]);
+    const [sessions, goals, prefs] = await Promise.all([
+      apiFetch("/api/sessions"), apiFetch("/api/goals"),
+      apiFetch("/api/prefs").catch(() => null), // older servers have no /api/prefs
+    ]);
     if (Array.isArray(sessions)) { state.sessions = sessions; persist(); }
     if (goals) { state.goals = Object.assign({}, state.goals, goals); persistGoals(); }
+    if (prefs) {
+      if (typeof prefs.profile === "string") { state.profile = prefs.profile; persistProfile(); }
+      else if (state.profile) { schedulePushPrefs(); } // server has none, seed it from here
+      if (prefs.coachNote && prefs.coachNote.summary) {
+        state.coachNote = prefs.coachNote;
+        try { localStorage.setItem(COACH_CACHE_KEY, JSON.stringify(state.coachNote)); } catch (e) {}
+      } else if (state.coachNote) { schedulePushPrefs(); }
+    }
     state.syncStatus = "synced";
   } catch (e) {
     state.syncStatus = "error";
@@ -591,6 +626,7 @@ window.updateShooting = function (key, val) {
 };
 window.updateDribbling = function (key, val) { state.dribbling[key] = val; render(); };
 window.updateDate = function (val) { state.date = val; };
+window.updateNotes = function (val) { state.notes = val; };
 window.updateTime = function (val) { state.time = val; };
 
 window.handleAdd = function () {
@@ -617,6 +653,7 @@ window.handleAdd = function () {
       midMakes: s.midMakes === "" ? null : Number(s.midMakes),
       longMakes: s.longMakes === "" ? null : Number(s.longMakes),
       badges: Array.isArray(s.badges) && s.badges.length ? s.badges : null,
+      notes: (state.notes || "").trim() || null,
       closeAttempts: s.closeAttempts === "" ? null : Number(s.closeAttempts),
       midAttempts: s.midAttempts === "" ? null : Number(s.midAttempts),
       longAttempts: s.longAttempts === "" ? null : Number(s.longAttempts),
@@ -633,6 +670,7 @@ window.handleAdd = function () {
       points: Number(d.points) || 0,
       reps: Number(d.reps) || 0,
       duration: d.duration === "" ? null : Number(d.duration),
+      notes: (state.notes || "").trim() || null,
     };
   }
   if (state.editingId) {
@@ -653,6 +691,7 @@ window.handleAdd = function () {
   }
   state.shooting = emptyShooting();
   state.dribbling = emptyDribbling();
+  state.notes = "";
   state.date = todayStr();
   state.time = nowTimeStr();
   state.tab = "dashboard";
@@ -662,6 +701,7 @@ window.startEdit = function (id) {
   const s = state.sessions.find((x) => x.id === id);
   if (!s) return;
   state.editingId = id;
+  state.notes = s.notes || "";
   state.date = s.date;
   state.time = s.time || nowTimeStr();
   state.type = s.type;
@@ -693,6 +733,7 @@ window.cancelEdit = function () {
   state.editingId = null;
   state.shooting = emptyShooting();
   state.dribbling = emptyDribbling();
+  state.notes = "";
   state.date = todayStr();
   state.time = nowTimeStr();
   state.tab = "dashboard";
@@ -751,7 +792,7 @@ function maybeNotify(force) {
   try { lastNotified = localStorage.getItem(LAST_NOTIFIED_KEY); } catch (e) {}
   if (!force && lastNotified === today) return;
   const d = computeDerived();
-  const pace = computePace(d.thisWeek, state.goals);
+  const pace = computePace(d.thisWeek, state.goals, tracksOf(d));
   if (pace.onTrack) return;
   const parts = [];
   if (pace.shotsBehind > 0) parts.push(`${pace.shotsBehind} shots`);
@@ -876,6 +917,10 @@ function buildCoachPayload() {
       // one session and say so, not read it as two days of practice.
       possibleDuplicates: d.duplicates,
       shotTypes: d.shotTypes,
+      // Metrics reading 0% in every session — far more likely a parse failure
+      // than a real result, so the note should flag rather than interpret them.
+      suspectMechanics: d.suspectMechanics,
+      sessionNotes: d.bySession.filter((s) => s.notes).map((s) => ({ date: s.date, notes: s.notes })),
       shootingSessionCount: shooting.length,
       totalAttempts: shooting.reduce((a, s) => a + s.attempts, 0),
       totalMakes: shooting.reduce((a, s) => a + s.makes, 0),
@@ -959,6 +1004,7 @@ window.refreshCoachNote = async function (force) {
       note.sessionCount = state.sessions.length;
       state.coachNote = note;
       try { localStorage.setItem(COACH_CACHE_KEY, JSON.stringify(note)); } catch (e) {}
+      schedulePushPrefs();
     } else {
       showToast("AI analysis returned nothing usable", 4000);
     }
@@ -980,6 +1026,22 @@ window.applySuggestedGoals = function () {
   render();
 };
 
+// The screenshot parser confuses the close and mid bars, and until now that
+// could only be corrected while logging — a saved session had to be retyped
+// field by field.
+window.swapSessionZones = function (id) {
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return;
+  for (const suffix of ["Attempts", "Makes", "Swishes"]) {
+    const tmp = s["close" + suffix];
+    s["close" + suffix] = s["mid" + suffix];
+    s["mid" + suffix] = tmp;
+  }
+  persist();
+  pushSessionToApi(s);
+  showToast("Swapped Close and Mid for that session");
+  render();
+};
 window.swapCloseMid = function () {
   const s = state.shooting;
   for (const suffix of ["Attempts", "Makes", "Swishes"]) {
@@ -1398,6 +1460,17 @@ function computeDerived() {
       count: withVal.length,
     });
   }
+  // A percentage-in-range metric pinned at the floor across every session is
+  // far more likely a screenshot the parser cannot read than a real result.
+  // "Pinned" rather than "always exactly zero": release time logs 0, 1, 0, 0,
+  // and a single 1 should not buy it the benefit of the doubt.
+  const suspectMechanics = mechanics.filter((m) => {
+    const vals = shootingByDate.map((s) => s[m.key])
+      .filter((v) => v !== null && v !== undefined).map(Number);
+    if (vals.length < 3) return false;
+    return vals.every((v) => v <= 1) && vals.filter((v) => v === 0).length >= vals.length / 2;
+  }).map((m) => m.label);
+
   const formCounts = { Consistent: 0, Inconsistent: 0 };
   for (const s of shootingSessions) {
     const f = (s.shotForm || "").toLowerCase();
@@ -1450,6 +1523,7 @@ function computeDerived() {
     duration: s.duration ?? null,
     shotForm: s.shotForm || null,
     shotType: s.shotType || null,
+    notes: s.notes || null,
   }));
 
   // A single career average hides how much a session-to-session figure moves.
@@ -1504,7 +1578,7 @@ function computeDerived() {
     .map((t) => ({ ...t, pct: pct1(t.makes, t.attempts) }))
     .sort((a, b) => b.attempts - a.attempts);
 
-  return { bySession, pctSpread, duplicates, shotTypes,
+  return { bySession, pctSpread, duplicates, shotTypes, suspectMechanics,
     weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm, badgeList };
 }
 
@@ -1561,11 +1635,13 @@ function render() {
     </div></div>`;
 
   app.innerHTML = header + installBanner + body + tabbar +
-    `<div class="footer-note">Data is stored in this browser only (not synced across devices).<br/>Use Export/Import to move it or back it up.</div>`;
+    `<div class="footer-note">${apiConfigured()
+      ? "Sessions, goals, player context and the coach's note sync across your devices."
+      : "Data is stored in this browser only (not synced across devices)."}<br/>Use Export/Import to move it or back it up.</div>`;
 
   if (state.sessions.length > 0 && state.tab === "dashboard") {
     restoreHeroSlide();
-    drawCharts();
+    try { drawCharts(); } catch (e) { console.error("charts unavailable", e); }
     maybeNotify(false);
   }
 
@@ -1580,7 +1656,7 @@ function render() {
   }
 }
 
-window.updateProfile = function (val) { state.profile = val; persistProfile(); };
+window.updateProfile = function (val) { state.profile = val; persistProfile(); schedulePushPrefs(); };
 function renderProfileCard() {
   return `<div class="card">
     <div class="section-label" style="margin:0 0 10px">Player Context</div>
@@ -1736,7 +1812,7 @@ function renderDashboard() {
     </div>`;
   }
 
-  const pace = computePace(d.thisWeek, state.goals);
+  const pace = computePace(d.thisWeek, state.goals, tracksOf(d));
   const paceParts = [];
   if (pace.shotsBehind > 0) paceParts.push(`${pace.shotsBehind} more shots`);
   if (pace.dribbleBehind > 0) paceParts.push(`${pace.dribbleBehind} more DribbleUp min`);
@@ -1948,6 +2024,11 @@ function renderDashboard() {
         <span><span class="trend-value">${m.latest}%</span>${delta}</span>
       </div>`;
     }
+    if (d.suspectMechanics.length) {
+      html += `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-top:10px">
+        <strong style="color:var(--ink)">Worth checking:</strong> ${d.suspectMechanics.join(" and ")} never rose above 1% in any session logged. That is more often a screenshot the parser could not read than a real result — compare one against the DribbleUp screen before coaching to it.
+      </div>`;
+    }
     if (d.latestForm) {
       const total = d.formCounts.Consistent + d.formCounts.Inconsistent;
       const consistentPct = total > 0 ? Math.round((d.formCounts.Consistent / total) * 100) : 0;
@@ -2021,7 +2102,10 @@ function renderDashboard() {
       if (bits.length) mechLine = `<div style="font-size:11px;color:var(--gray);opacity:0.75;margin-top:3px">${bits.join(" · ")}</div>`;
     }
     html += `<div class="session-row">
-      <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}</div>
+      <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}${
+        s.type === "shooting" && ((s.closeAttempts || 0) + (s.midAttempts || 0)) > 0
+          ? `<button class="btn-link" style="margin-top:5px;padding:0" onclick="swapSessionZones('${s.id}')">⇅ Swap Close / Mid</button>` : ""
+      }${s.notes ? `<div style="font-size:12px;color:var(--ink-2);margin-top:5px;line-height:1.4">${s.notes}</div>` : ""}</div>
       <span style="display:flex;gap:2px;flex-shrink:0">
       <button class="del-btn" onclick="startEdit('${s.id}')" aria-label="Edit session"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       <button class="del-btn" onclick="handleDelete('${s.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
@@ -2365,6 +2449,7 @@ function renderLogForm() {
 
   html += `<div class="row">
     ${fieldHtml("Date", `<input class="input" id="f-date" type="date" value="${state.date}" max="${todayStr()}" oninput="updateDate(this.value)" />`)}
+    ${fieldHtml("Notes (optional)", `<textarea class="input" id="f-notes" rows="2" style="resize:vertical;line-height:1.45" placeholder="Anything the numbers miss — outdoor, tired, first session back, new drill." oninput="updateNotes(this.value)">${state.notes || ""}</textarea>`)}
     ${fieldHtml("Time", `<input class="input" id="f-time" type="time" value="${state.time}" oninput="updateTime(this.value)" />`)}
   </div>`;
 
@@ -2444,6 +2529,8 @@ function renderLogForm() {
 
 /* ---------- charts ---------- */
 function drawCharts() {
+  if (typeof Chart === "undefined") return; // offline with a cold cache
+
   const d = computeDerived();
   const gray = "#6b6b6b", navyLine = "#e4e4e4", orange = "#f47b20", navyLightBar = "#d8d8d8";
   Chart.defaults.font.family = "'Inter', sans-serif";
