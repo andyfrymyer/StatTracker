@@ -1,5 +1,5 @@
-const CACHE_NAME = "shootingiq-v1";
-const APP_SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+const CACHE_NAME = "shootingiq-v2";
+const APP_SHELL = ["./", "./index.html", "./chart.umd.min.js", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
