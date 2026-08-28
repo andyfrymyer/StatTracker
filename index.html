@@ -46,7 +46,7 @@
   }
   #app { max-width: 480px; margin: 0 auto; padding-bottom: 124px; }
   .h-brand { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 800; }
-  .slash { display:inline-block; width:10px; height:1.1em; background:var(--orange); transform: skewX(-16deg); margin: 0 8px; vertical-align: -3px; }
+  .slash { color: var(--orange); margin: 0 0.06em; }
   input, select, textarea { font-family: inherit; }
   input:focus, select:focus, textarea:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
 
@@ -55,13 +55,21 @@
      voice; the display face's tall ascender is trimmed with a negative top
      margin so the number does not float in its own line box. */
   .hero { padding: 0 0 20px; }
+  .hero-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+    scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch; }
+  .hero-track::-webkit-scrollbar { display: none; }
+  .hero-slide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; padding-right: 4px; }
+  .hero-dots { display: flex; gap: 7px; margin-top: 14px; }
+  .hero-dot { width: 7px; height: 7px; padding: 0; border: none; border-radius: 50%;
+    background: var(--line); cursor: pointer; transition: background 0.15s; }
+  .hero-dot.active { background: var(--ink); }
   .hero-value { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 800;
     font-size: clamp(58px, 19vw, 78px); line-height: 1; letter-spacing: -0.01em; color: var(--ink);
     display: flex; align-items: baseline; gap: 2px; margin: -0.1em 0 0; }
   /* Sits up near the cap height instead of stranded on the baseline. */
   .hero-suffix { font-size: 0.34em; font-weight: 700; align-self: flex-start; margin-top: 0.42em; }
   .hero-label { font-size: 15px; font-weight: 600; color: var(--ink); margin-top: 6px; }
-  .hero-sub { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
+  .hero-sub { font-size: 13px; color: var(--ink-2); margin-top: 3px; min-height: 2.7em; }
   .hero-row { display: flex; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
   .hero-stat { flex: 1; min-width: 0; }
   .hero-stat-v { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 32px;
@@ -1165,7 +1173,7 @@ window.printRecap = function () {
   const prevWeek = d.weekly.find((w) => w.week === prevWeekKey) || { attempts: 0, makes: 0, points: 0, dribbleMin: 0, shootingPct: null };
   const fgDelta = d.thisWeek.shootingPct !== null && prevWeek.shootingPct !== null ? Math.round((d.thisWeek.shootingPct - prevWeek.shootingPct) * 10) / 10 : null;
   recap.innerHTML = `
-    <div class="rp-title">SHOOTING / IQ — Weekly Recap</div>
+    <div class="rp-title">SHOOTINGIQ — Weekly Recap</div>
     <div class="rp-sub">Week of ${fmtShort(getMonday(todayStr()))} · Generated ${fmtShort(todayStr())}</div>
     <div class="rp-section">
       <div class="rp-label">Shooting</div>
@@ -1519,7 +1527,7 @@ function render() {
     <div style="padding:22px 20px 14px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div>
-          <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">SHOOTING<span class="slash"></span>IQ</div>
+          <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">SHOOTING<span class="slash">I</span>Q</div>
         </div>
         <span class="sync-pill ${syncPillClass}">${syncDot}${syncPillText}</span>
       </div>
@@ -1556,6 +1564,7 @@ function render() {
     `<div class="footer-note">Data is stored in this browser only (not synced across devices).<br/>Use Export/Import to move it or back it up.</div>`;
 
   if (state.sessions.length > 0 && state.tab === "dashboard") {
+    restoreHeroSlide();
     drawCharts();
     maybeNotify(false);
   }
@@ -1600,6 +1609,77 @@ function renderSyncCard() {
   </div>`;
 }
 
+// Which figures earn the top of the screen depends on what has been logged, so
+// each slide is only built when its data supports it. Order is deliberate:
+// where she is now, then the biggest gap, then whether this week is on track.
+function buildHeroSlides(d) {
+  const slides = [];
+  const round1 = (v) => Math.round(v * 10) / 10;
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  if (d.pctSpread) {
+    slides.push({ value: d.pctSpread.latest, suffix: "%", label: "Last session FG%",
+      sub: `Career ${d.overallPct}% · ${d.pctSpread.min}–${d.pctSpread.max}% across ${d.pctSpread.count} sessions` });
+  } else if (d.overallPct !== null) {
+    slides.push({ value: d.overallPct, suffix: "%", label: "Career FG%", sub: "" });
+  }
+
+  // Zones need real volume before a percentage means anything.
+  const zones = d.zoneStats.filter((z) => z.attempts >= 20 && z.pct !== null);
+  if (zones.length >= 2) {
+    const worst = zones.reduce((a, z) => (z.pct < a.pct ? z : a));
+    const best = zones.reduce((a, z) => (z.pct > a.pct ? z : a));
+    slides.push({ value: worst.pct, suffix: "%", label: `${worst.label} FG%`,
+      sub: `Weakest zone over ${worst.attempts} attempts · ${best.label} is ${round1(best.pct - worst.pct)} points better` });
+  }
+
+  const types = d.shotTypes.filter((t) => t.attempts >= 20);
+  if (types.length >= 2) {
+    const worst = types.reduce((a, t) => (t.pct < a.pct ? t : a));
+    const best = types.reduce((a, t) => (t.pct > a.pct ? t : a));
+    slides.push({ value: worst.pct, suffix: "%", label: `${cap(worst.shotType)} FG%`,
+      sub: `${round1(best.pct - worst.pct)} points below ${best.shotType} (${best.pct}%) over ${worst.sessions} session${worst.sessions === 1 ? "" : "s"}` });
+  }
+
+  slides.push({ value: d.thisWeek.attempts, label: "Shots this week",
+    sub: d.thisWeek.attempts >= state.goals.shots
+      ? `Weekly goal of ${state.goals.shots} met`
+      : `${state.goals.shots - d.thisWeek.attempts} short of ${state.goals.shots}` });
+
+  // The mechanic that has moved furthest against its own prior average.
+  const moved = d.mechanics.filter((m) => m.priorAvg !== null)
+    .map((m) => ({ ...m, delta: m.latest - m.priorAvg }))
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+  if (moved && Math.abs(moved.delta) >= 1) {
+    slides.push({ value: moved.latest, suffix: "%", label: `${moved.label} in range`,
+      sub: `${moved.delta >= 0 ? "Up" : "Down"} ${Math.abs(Math.round(moved.delta))} points on the average of the ${moved.count - 1} session${moved.count - 1 === 1 ? "" : "s"} before it` });
+  }
+  return slides;
+}
+// render() rewrites innerHTML, which would otherwise snap the carousel back to
+// the first slide on every unrelated state change.
+let heroSlideIndex = 0;
+window.goHeroSlide = function (i) {
+  const t = document.getElementById("hero-track");
+  if (!t) return;
+  heroSlideIndex = i;
+  t.scrollTo({ left: t.clientWidth * i, behavior: "smooth" });
+};
+window.onHeroScroll = function () {
+  const t = document.getElementById("hero-track");
+  if (!t || !t.clientWidth) return;
+  const i = Math.round(t.scrollLeft / t.clientWidth);
+  if (i === heroSlideIndex) return;
+  heroSlideIndex = i;
+  const dots = document.querySelectorAll(".hero-dot");
+  dots.forEach((dot, n) => dot.classList.toggle("active", n === i));
+};
+function restoreHeroSlide() {
+  const t = document.getElementById("hero-track");
+  if (!t || !heroSlideIndex) return;
+  t.scrollLeft = t.clientWidth * heroSlideIndex;
+  document.querySelectorAll(".hero-dot").forEach((dot, n) => dot.classList.toggle("active", n === heroSlideIndex));
+}
 function renderDashboard() {
   if (state.sessions.length === 0) {
     return `
@@ -1622,12 +1702,17 @@ function renderDashboard() {
 
   let html = `<div style="padding:0 20px">`;
 
-  const heroPct = d.pctSpread ? d.pctSpread.latest : d.overallPct;
   const totalShots = d.shootingSessions.reduce((a, s) => a + s.attempts, 0);
+  const slides = buildHeroSlides(d);
   html += `<div class="hero">
-    <div class="hero-value">${heroPct !== null && heroPct !== undefined ? heroPct : "—"}<span class="hero-suffix">%</span></div>
-    <div class="hero-label">${d.pctSpread ? "Last session FG%" : "Career FG%"}</div>
-    ${d.pctSpread ? `<div class="hero-sub">Career ${d.overallPct}% · ${d.pctSpread.min}–${d.pctSpread.max}% across ${d.pctSpread.count} sessions</div>` : ""}
+    <div class="hero-track" id="hero-track" onscroll="onHeroScroll()">
+      ${slides.map((s) => `<div class="hero-slide">
+        <div class="hero-value">${s.value}${s.suffix ? `<span class="hero-suffix">${s.suffix}</span>` : ""}</div>
+        <div class="hero-label">${s.label}</div>
+        <div class="hero-sub">${s.sub || ""}</div>
+      </div>`).join("")}
+    </div>
+    ${slides.length > 1 ? `<div class="hero-dots">${slides.map((s, i) => `<button class="hero-dot${i === 0 ? " active" : ""}" onclick="goHeroSlide(${i})" aria-label="${s.label}"></button>`).join("")}</div>` : ""}
     <div class="hero-row">
       <div class="hero-stat"><div class="hero-stat-v">${d.shootingSessions.length}</div><div class="hero-stat-l">Sessions</div></div>
       <div class="hero-stat"><div class="hero-stat-v">${totalShots}</div><div class="hero-stat-l">Shots</div></div>
