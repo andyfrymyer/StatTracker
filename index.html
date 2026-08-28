@@ -3,140 +3,167 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#0d1b2e" />
+<meta name="theme-color" content="#ffffff" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Ella Tracker" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="ShootingIQ" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" href="icon-192.png" />
-<title>Ella Tracker</title>
+<title>ShootingIQ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root {
-    --navy: #0d1b2e;
-    --navy-light: #13243b;
-    --navy-line: #233a56;
+    /* Near-white ground, near-black ink, colour reserved for data and the
+       brand mark. Weight and space do the separating, not borders. */
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --surface-2: #ebebeb;
+    --ink: #101010;
+    --ink-2: #6b6b6b;
+    --line: #e4e4e4;
     --orange: #f47b20;
-    --gray: #8a96a8;
-    --green: #5fd0a5;
-    --blue: #5b9bd5;
+    --green: #1f9d63;
+    --blue: #2f6fb5;
+    --red: #c62f37;
+    /* Legacy names, kept so existing rules and inline styles still resolve. */
+    --navy: #ffffff;
+    --navy-light: var(--surface);
+    --navy-line: var(--line);
+    --gray: var(--ink-2);
   }
   * { box-sizing: border-box; }
-  html {
-    background: #0d1b2e;
-  }
+  html { background: var(--bg); }
   body {
-    margin: 0; background: var(--navy); color: #eef1f6;
+    margin: 0; background: var(--bg); color: var(--ink);
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
     overscroll-behavior-y: none;
   }
-  #app { max-width: 480px; margin: 0 auto; padding-bottom: 100px; }
+  #app { max-width: 480px; margin: 0 auto; padding-bottom: 124px; }
   .h-brand { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 800; }
   .slash { display:inline-block; width:10px; height:1.1em; background:var(--orange); transform: skewX(-16deg); margin: 0 8px; vertical-align: -3px; }
-  input, select { font-family: inherit; }
-  input:focus, select:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
-  input[type=date]::-webkit-calendar-picker-indicator,
-  input[type=time]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
-  .card { background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
-  .stat-card { flex: 1 1 calc(50% - 5px); min-width: 130px; background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 12px 10px; }
-  .stat-value { font-size: 19px; font-weight: 700; color: #fff; }
-  .stat-suffix { font-size: 12px; color: var(--gray); }
-  .stat-label { font-size: 10px; color: var(--gray); margin-top: 2px; }
+  input, select, textarea { font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  /* Hero — one number carries the screen, everything else sits under it. */
+  .hero { padding: 2px 0 20px; }
+  .hero-value { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 800;
+    font-size: clamp(64px, 22vw, 92px); line-height: 0.84; letter-spacing: -0.02em; color: var(--ink); }
+  .hero-suffix { font-size: 0.4em; }
+  .hero-label { font-size: 15px; color: var(--ink-2); margin-top: 12px; }
+  .hero-sub { font-size: 13px; color: var(--ink-2); margin-top: 5px; }
+  .hero-row { display: flex; gap: 10px; margin-top: 22px; }
+  .hero-stat { flex: 1; min-width: 0; }
+  .hero-stat-v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+  .hero-stat-l { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+
+  .card { background: var(--surface); border: none; border-radius: 18px; padding: 18px; margin-bottom: 12px; }
+  .stat-card { flex: 1 1 calc(50% - 5px); min-width: 130px; background: var(--surface); border: none; border-radius: 18px; padding: 14px; }
+  .stat-value { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+  .stat-suffix { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+  .stat-label { font-size: 12px; color: var(--ink-2); margin-top: 3px; }
   .row { display: flex; gap: 10px; }
   .row > * { flex: 1; }
   .field { margin-bottom: 14px; }
-  .field label { font-size: 11.5px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.04em; display:block; margin-bottom: 5px;}
+  .field label { font-size: 12.5px; color: var(--ink-2); display:block; margin-bottom: 6px; }
   .input {
-    width: 100%; background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 9px;
-    padding: 10px 12px; color: #fff; font-size: 14.5px;
+    width: 100%; background: var(--surface); border: 1px solid transparent; border-radius: 12px;
+    padding: 12px 14px; color: var(--ink); font-size: 15px;
   }
   .btn-primary {
-    background: var(--orange); color: var(--navy); border: none; border-radius: 10px; padding: 12px 18px;
+    background: var(--ink); color: #fff; border: none; border-radius: 999px; padding: 13px 22px;
     font-weight: 700; font-size: 14px; cursor: pointer;
   }
   .btn-ghost {
-    background: transparent; color: var(--gray); border: 1px solid var(--navy-line); border-radius: 10px;
-    padding: 12px 18px; font-weight: 700; font-size: 14px; cursor: pointer;
+    background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 999px;
+    padding: 13px 22px; font-weight: 700; font-size: 14px; cursor: pointer;
   }
-  .btn-link { background:none; border:none; color: var(--gray); font-size:12px; text-decoration: underline; cursor:pointer; }
+  .btn-link { background:none; border:none; color: var(--ink-2); font-size:12.5px; text-decoration: underline; cursor:pointer; }
   .seg-btn {
-    flex: 1; padding: 10px 0; border-radius: 9px; font-weight: 700; font-size: 13.5px; cursor: pointer;
-    border: 1px solid var(--navy-line); background: transparent; color: var(--gray);
+    flex: 1; padding: 11px 0; border-radius: 999px; font-weight: 700; font-size: 13.5px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-2);
   }
-  .seg-btn.active { border-color: var(--orange); background: rgba(244,123,32,0.14); color: var(--orange); }
+  .seg-btn.active { border-color: var(--ink); background: var(--ink); color: #fff; }
   .session-row {
-    background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 12px 14px;
+    background: var(--surface); border: none; border-radius: 16px; padding: 14px 16px;
     display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
   }
-  .session-title { font-size: 13.5px; font-weight: 600; color: #fff; }
-  .session-sub { font-size: 12px; color: var(--gray); margin-top: 2px; }
-  .del-btn { background:none; border:none; color: var(--gray); cursor:pointer; padding: 6px; }
-  .section-label { font-size: 11px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.06em; margin: 22px 0 10px; }
-  .zone-pill { flex:1; background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 10px 8px; text-align:center; }
-  .zone-dot { width: 8px; height: 8px; border-radius: 50%; margin: 0 auto 5px; }
-  .best-row { background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 10px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-  .best-label { font-size: 12.5px; color: #e4e9f1; font-weight: 600; }
-  .best-sub { font-size: 11px; color: var(--gray); margin-top: 1px; }
-  .best-value { font-size: 17px; font-weight: 700; color: var(--orange); }
-  .tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--navy-light); border-top: 1px solid var(--navy-line); }
-  .tabbar-inner { max-width: 480px; margin: 0 auto; display: flex; }
-  .tab-btn { flex: 1; background: none; border: none; padding: 12px 0 14px; cursor: pointer; color: var(--gray); display:flex; flex-direction:column; align-items:center; gap:3px; }
-  .tab-btn.active { color: var(--orange); }
-  .toast { position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%); background: var(--orange); color: var(--navy); font-weight:700; font-size:13px; padding: 9px 18px; border-radius: 999px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 50;}
+  .session-title { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+  .session-sub { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+  .del-btn { background:none; border:none; color: var(--ink-2); cursor:pointer; padding: 6px; }
+  /* Section headings are large and plain rather than small grey capitals. */
+  .section-label { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink);
+    text-transform: none; margin: 26px 0 12px; }
+  .zone-pill { flex:1; background: var(--surface); border: none; border-radius: 16px; padding: 12px 8px; text-align:center; }
+  .zone-dot { width: 8px; height: 8px; border-radius: 50%; margin: 0 auto 6px; }
+  .best-row { background: var(--surface); border: none; border-radius: 16px; padding: 12px 16px; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .best-label { font-size: 13.5px; color: var(--ink); font-weight: 700; }
+  .best-sub { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+  .best-value { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+  /* Floating pill nav, lifted off the bottom edge. */
+  .tabbar { position: fixed; bottom: 0; left: 0; right: 0; padding: 0 16px 18px;
+    background: linear-gradient(to top, var(--bg) 58%, rgba(255,255,255,0)); pointer-events: none; }
+  .tabbar-inner { max-width: 420px; margin: 0 auto; display: flex; background: var(--bg);
+    border-radius: 999px; padding: 6px; pointer-events: auto;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.16), 0 0 0 1px var(--line); }
+  .tab-btn { flex: 1; background: none; border: none; padding: 10px 0; cursor: pointer; color: var(--ink-2);
+    display:flex; flex-direction:column; align-items:center; gap:3px; border-radius: 999px; }
+  .tab-btn.active { color: var(--ink); background: var(--surface); }
+  .toast { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; font-weight:700; font-size:13px; padding: 11px 20px; border-radius: 999px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 50; max-width: 86vw; text-align:center; }
   .toast.show { opacity: 1; }
-  .cal-nav-btn { background:none; border:1px solid var(--navy-line); border-radius:8px; padding:5px 8px; color:#cbd3e0; cursor:pointer; }
+  .cal-nav-btn { background:none; border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--ink); cursor:pointer; }
   .cal-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:4px; text-align:center; }
-  .cal-dow { font-size:10px; color: var(--gray); padding: 2px 0; }
+  .cal-dow { font-size:10.5px; color: var(--ink-2); padding: 2px 0; }
   .cal-cell { display:flex; align-items:center; justify-content:center; padding:2px 0; }
-  .cal-day { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#cbd3e0; }
-  .cal-day.practiced { background: var(--orange); color: var(--navy); font-weight:600; }
+  .cal-day { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--ink); }
+  .cal-day.practiced { background: var(--ink); color: #fff; font-weight:700; }
   .cal-day.today:not(.practiced) { border: 1.5px solid var(--orange); font-weight:700; }
-  .insight-card { display:flex; gap:12px; align-items:flex-start; padding:14px; border-radius:12px; margin-bottom:18px; border:1px solid var(--navy-line); background: var(--navy-light); }
-  .insight-card.warning { background: rgba(244,123,32,0.10); border-color: var(--orange); }
-  .insight-card.positive { background: rgba(95,208,165,0.10); border-color: var(--green); }
-  .insight-title { font-size: 10.5px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-  .insight-text { font-size: 13px; color: #e4e9f1; line-height: 1.45; }
-  .chart-title { font-size: 12px; color: #cbd3e0; font-weight: 600; padding: 0 4px 10px; }
-  .empty-box { padding: 24px; text-align: center; margin-bottom: 14px; }
-  .footer-note { text-align:center; color: var(--gray); font-size: 11px; padding: 24px 20px 4px; line-height:1.5; }
-  .trend-row { display:flex; justify-content:space-between; align-items:center; padding: 8px 0; border-bottom: 1px solid var(--navy-line); }
+  .insight-card { display:flex; gap:12px; align-items:flex-start; padding:18px; border-radius:18px; margin-bottom:14px; border:none; background: var(--surface); }
+  .insight-card.warning { background: var(--surface); }
+  .insight-card.positive { background: var(--surface); }
+  .insight-title { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; font-weight: 600; }
+  .insight-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+  .chart-title { font-size: 17px; color: var(--ink); font-weight: 800; letter-spacing: -0.02em; padding: 0 4px 8px; }
+  .empty-box { padding: 28px; text-align: center; margin-bottom: 14px; }
+  .footer-note { text-align:center; color: var(--ink-2); font-size: 11.5px; padding: 24px 20px 4px; line-height:1.5; }
+  .trend-row { display:flex; justify-content:space-between; align-items:center; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .trend-row:last-child { border-bottom: none; }
-  .trend-label { font-size: 13px; color: #e4e9f1; font-weight: 600; }
-  .trend-value { font-size: 15px; color: #fff; font-weight: 700; }
-  .trend-delta { font-size: 11.5px; font-weight: 700; margin-left: 6px; }
+  .trend-label { font-size: 13.5px; color: var(--ink); font-weight: 600; }
+  .trend-value { font-size: 17px; color: var(--ink); font-weight: 800; letter-spacing: -0.02em; }
+  .trend-delta { font-size: 12px; font-weight: 700; margin-left: 8px; }
   .trend-delta.up { color: var(--green); }
-  .trend-delta.down { color: #ff8a8a; }
-  .trend-delta.flat { color: var(--gray); }
-  .reminder-banner { display:flex; gap:12px; align-items:flex-start; padding:14px; border-radius:12px; margin-bottom:14px; border:1px solid var(--orange); background: rgba(244,123,32,0.10); }
-  .reminder-banner.ontrack { border-color: var(--green); background: rgba(95,208,165,0.10); }
-  .reminder-title { font-size: 10.5px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-  .reminder-text { font-size: 13px; color: #e4e9f1; line-height: 1.45; }
-  .reminder-toggle { font-size: 11px; color: var(--gray); text-decoration: underline; background:none; border:none; cursor:pointer; margin-top: 8px; padding: 0; }
-  .install-banner { margin: 0 20px 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--navy-line); background: var(--navy-light); display:flex; gap:10px; align-items:flex-start; }
-  .install-banner-text { font-size: 12.5px; color: #cbd3e0; line-height:1.5; flex:1; }
-  .install-banner-close { background:none; border:none; color: var(--gray); cursor:pointer; padding:2px; }
-  .import-card { border: 1.5px dashed var(--navy-line); border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 18px; }
-  .import-status { font-size: 12px; color: var(--gray); margin-top: 8px; min-height: 16px; }
-  .input.ocr-read { border-color: var(--green); box-shadow: inset 0 0 0 1px rgba(95,208,165,0.25); }
-  .input.ocr-derived { border-color: #d9a441; box-shadow: inset 0 0 0 1px rgba(217,164,65,0.25); }
+  .trend-delta.down { color: var(--red); }
+  .trend-delta.flat { color: var(--ink-2); }
+  .reminder-banner { display:flex; gap:12px; align-items:flex-start; padding:16px; border-radius:18px; margin-bottom:12px; border:none; background: var(--surface); }
+  .reminder-banner.ontrack { background: var(--surface); }
+  .reminder-banner.alert { background: #fdeceb; box-shadow: inset 3px 0 0 var(--red); }
+  .reminder-title { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; font-weight: 600; }
+  .reminder-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+  .reminder-toggle { font-size: 12px; color: var(--ink); text-decoration: underline; background:none; border:none; cursor:pointer; margin-top: 10px; padding: 0; }
+  .install-banner { margin: 0 20px 14px; padding: 14px 16px; border-radius: 16px; border: none; background: var(--surface); display:flex; gap:10px; align-items:flex-start; }
+  .install-banner-text { font-size: 13px; color: var(--ink); line-height:1.5; flex:1; }
+  .install-banner-close { background:none; border:none; color: var(--ink-2); cursor:pointer; padding:2px; }
+  .import-card { border: 1.5px dashed var(--line); border-radius: 18px; padding: 20px; text-align: center; margin-bottom: 18px; }
+  .import-status { font-size: 12.5px; color: var(--ink-2); margin-top: 8px; min-height: 16px; }
+  .input.ocr-read { border-color: var(--green); box-shadow: inset 0 0 0 1px rgba(31,157,99,0.25); }
+  .input.ocr-derived { border-color: #b8860b; box-shadow: inset 0 0 0 1px rgba(184,134,11,0.25); }
   .field-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; vertical-align: 1px; }
-  .field-tag.read { background: rgba(95,208,165,0.18); color: var(--green); }
-  .field-tag.derived { background: rgba(217,164,65,0.18); color: #d9a441; }
-  .ocr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--gray); margin-bottom:14px; padding: 10px 12px; background: var(--navy-light); border:1px solid var(--navy-line); border-radius:10px; }
+  .field-tag.read { background: rgba(31,157,99,0.16); color: var(--green); }
+  .field-tag.derived { background: rgba(184,134,11,0.16); color: #8a6508; }
+  .ocr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-2); margin-bottom:14px; padding: 12px 14px; background: var(--surface); border:none; border-radius:14px; }
   .ocr-legend span { display:inline-flex; align-items:center; gap:5px; }
-  .badge-chip { display:inline-flex; align-items:center; gap:6px; background:var(--navy-light); border:1px solid var(--navy-line); border-radius:999px; padding:5px 11px; font-size:11.5px; color:#e4e9f1; margin:0 6px 6px 0; }
-  .badge-grade { font-weight:800; font-size:11px; color:var(--navy); background:var(--orange); border-radius:4px; padding:1px 5px; }
-  .badge-zone { font-size:9.5px; color:var(--gray); text-transform:uppercase; letter-spacing:0.04em; }
+  .badge-chip { display:inline-flex; align-items:center; gap:6px; background:var(--surface); border:none; border-radius:999px; padding:7px 13px; font-size:12px; color:var(--ink); margin:0 6px 6px 0; }
+  .badge-grade { font-weight:800; font-size:11px; color:#fff; background:var(--ink); border-radius:5px; padding:1px 6px; }
+  .badge-zone { font-size:9.5px; color:var(--ink-2); text-transform:uppercase; letter-spacing:0.04em; }
   .legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
-  .spin { display:inline-block; width:12px; height:12px; border: 2px solid var(--navy-line); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  .spin { display:inline-block; width:12px; height:12px; border: 2px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .sync-pill { display:inline-flex; align-items:center; gap:5px; font-size:11px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--navy-line); color: var(--gray); }
+  .sync-pill { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
   .sync-pill.synced { border-color: var(--green); color: var(--green); }
   .sync-pill.error { border-color: var(--orange); color: var(--orange); }
   .sync-dot { width:6px; height:6px; border-radius:50%; background: currentColor; }
@@ -164,6 +191,9 @@
 
 <script>
 /* ---------- storage & helpers ---------- */
+// Storage keys keep their original names deliberately — they are internal to
+// the browser, and renaming them would strand each device's cached sessions,
+// saved PIN, player context and coach note behind keys nothing reads.
 const STORAGE_KEY = "ella-sessions-standalone";
 const GOALS_KEY = "ella-goals-standalone";
 const REMINDERS_KEY = "ella-reminders-standalone";
@@ -172,6 +202,7 @@ const PIN_KEY = "ella-pin-standalone";
 const API_BASE_KEY = "ella-api-base-standalone";
 const API_PIN_KEY = "ella-api-pin-standalone";
 const COACH_CACHE_KEY = "ella-coach-note-standalone";
+const PROFILE_KEY = "ella-profile-standalone";
 // Baked-in default so a fresh browser/device connects automatically without
 // re-typing the URL. Safe to make public — it's not a secret, just an address.
 // Leave as "" if you don't want a default (e.g. before you've deployed one).
@@ -348,8 +379,9 @@ let state = {
   lastOcrRaw: "",
   showOcrDebug: false,
   editingId: null,
-  coachNote: null,      // { summary, focus, goals, benchmarks, generatedAt, sessionCount }
+  coachNote: null,      // { summary, progress, focus, plan, goals, dataGaps, generatedAt, sessionCount }
   coachLoading: false,
+  profile: "",          // free-text context about the player, for the AI note
   apiBase: "",
   apiPin: "",
   syncStatus: "", // "", "syncing", "synced", "error", "offline"
@@ -379,6 +411,9 @@ function load() {
     if (raw) state.coachNote = JSON.parse(raw);
   } catch (e) { console.error(e); }
   try {
+    state.profile = localStorage.getItem(PROFILE_KEY) || "";
+  } catch (e) { console.error(e); }
+  try {
     const storedBase = localStorage.getItem(API_BASE_KEY);
     // null = never set on this device (use default). "" = user explicitly disconnected — respect that.
     state.apiBase = storedBase !== null ? storedBase : DEFAULT_API_BASE;
@@ -393,16 +428,50 @@ function persistGoals() {
   try { localStorage.setItem(GOALS_KEY, JSON.stringify(state.goals)); }
   catch (e) { showToast("Couldn't save goals."); }
 }
+// Stays on this device — it's a couple of lines of context, not synced data.
+function persistProfile() {
+  try { localStorage.setItem(PROFILE_KEY, state.profile); }
+  catch (e) { showToast("Couldn't save profile."); }
+}
 function apiConfigured() { return !!state.apiBase; }
+function apiError(message, status) {
+  const err = new Error(message);
+  err.status = status; // 0 = never reached the server, 408 = we gave up waiting
+  return err;
+}
 async function apiFetch(path, options) {
   options = options || {};
   const url = state.apiBase.replace(/\/$/, "") + path;
   const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
   if (state.apiPin) headers["x-app-pin"] = state.apiPin;
-  const res = await fetch(url, Object.assign({}, options, { headers }));
+  // Without a timeout a stalled request leaves the UI spinning forever, which
+  // is what a slow AI call looks like on a phone. Slow-by-nature endpoints
+  // pass their own timeoutMs.
+  const timeoutMs = options.timeoutMs || 30000;
+  const init = Object.assign({}, options, { headers });
+  delete init.timeoutMs;
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  let timer = null;
+  if (ctrl) {
+    init.signal = ctrl.signal;
+    timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  }
+  let res;
+  try {
+    res = await fetch(url, init);
+  } catch (e) {
+    const timedOut = e && e.name === "AbortError";
+    throw apiError(timedOut ? "timed out after " + Math.round(timeoutMs / 1000) + "s" : "network error", timedOut ? 408 : 0);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error("API " + res.status + " " + text);
+    // The API reports failures as {"error":"..."} — surface that instead of the
+    // raw body so callers can show the server's own explanation.
+    let detail = text;
+    try { const parsed = JSON.parse(text); if (parsed && parsed.error) detail = String(parsed.error); } catch (e) {}
+    throw apiError(detail || ("API " + res.status), res.status);
   }
   try { return await res.json(); } catch (e) { return null; }
 }
@@ -480,11 +549,14 @@ window.disconnectApi = function () {
     render();
   });
 };
-function showToast(msg) {
+function showToast(msg, ms) {
   const t = document.getElementById("toast");
   t.textContent = msg;
   t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), 1800);
+  // Clear any previous timer, or a toast that replaces an older one inherits
+  // the leftover countdown and flashes past before it can be read.
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => t.classList.remove("show"), ms || 1800);
 }
 
 /* ---------- actions (exposed to window for inline handlers) ---------- */
@@ -669,7 +741,7 @@ function maybeNotify(force) {
   const parts = [];
   if (pace.shotsBehind > 0) parts.push(`${pace.shotsBehind} shots`);
   if (pace.dribbleBehind > 0) parts.push(`${pace.dribbleBehind} DribbleUp min`);
-  new Notification("Ella Tracker", { body: `Behind pace this week: ${parts.join(" · ")} to stay on track.` });
+  new Notification("ShootingIQ", { body: `Behind pace this week: ${parts.join(" · ")} to stay on track.` });
   try { localStorage.setItem(LAST_NOTIFIED_KEY, today); } catch (e) {}
 }
 
@@ -713,6 +785,7 @@ async function parseWithVision(file) {
   return await apiFetch("/api/vision-parse", {
     method: "POST",
     body: JSON.stringify({ imageBase64, mediaType }),
+    timeoutMs: 90000,
   });
 }
 // Maps a vision JSON result onto the form state. Returns the list of fields it
@@ -767,6 +840,94 @@ function applyVisionResult(v) {
 }
 
 // --- AI coaching analysis ---------------------------------------------------
+// The dashboard already works out weekly splits, zone percentages, mechanics
+// trends and streaks. Sending that alongside the raw rows means the model
+// spends its budget on coaching rather than on arithmetic it can get wrong,
+// and it reads the same numbers the app is showing on screen.
+function buildCoachPayload() {
+  const d = computeDerived();
+  const shooting = d.shootingSessions;
+  const prev = state.coachNote;
+  return {
+    profile: state.profile || null,
+    goals: state.goals,
+    analysis: {
+      sessionCount: state.sessions.length,
+      // Week is too coarse to show movement early on, so give it the session
+      // series outright rather than making it rebuild one from the raw rows.
+      bySession: d.bySession,
+      pctSpread: d.pctSpread,
+      // Same workout logged twice: the model should treat a flagged group as
+      // one session and say so, not read it as two days of practice.
+      possibleDuplicates: d.duplicates,
+      shotTypes: d.shotTypes,
+      shootingSessionCount: shooting.length,
+      totalAttempts: shooting.reduce((a, s) => a + s.attempts, 0),
+      totalMakes: shooting.reduce((a, s) => a + s.makes, 0),
+      totalSwishes: shooting.reduce((a, s) => a + (s.swishes || 0), 0),
+      overallPct: d.overallPct,
+      zones: d.zoneStats,
+      weekly: d.weekly.map((w) => ({
+        week: w.week, attempts: w.attempts, makes: w.makes,
+        shootingPct: w.shootingPct, dribbleMin: w.dribbleMin,
+      })),
+      thisWeek: { attempts: d.thisWeek.attempts, makes: d.thisWeek.makes, dribbleMin: d.thisWeek.dribbleMin },
+      thisMonth: d.thisMonth,
+      lastMonth: d.lastMonth,
+      // Each entry is the latest reading against the average of every prior
+      // session, so a one-off reading can't be mistaken for a trend.
+      mechanics: d.mechanics,
+      shotForm: { counts: d.formCounts, latest: (d.latestForm && d.latestForm.shotForm) || null },
+      badges: d.badgeList,
+      streaks: { currentDays: d.dayStreak, longestDays: d.bests.longestStreak, consecutiveWeeks: d.weekStreak },
+      bestSessionPct: d.bests.bestPct ? d.bests.bestPct.pct : null,
+    },
+    // Lets the next note say whether the last focus was acted on, instead of
+    // starting from nothing every time.
+    previousNote: prev ? {
+      generatedAt: prev.generatedAt || null,
+      atSessionCount: prev.sessionCount || null,
+      summary: prev.summary || null,
+      focus: prev.focus || null,
+    } : null,
+    sessions: state.sessions.map((s) => {
+      const c = { ...s };
+      delete c.id;
+      return c;
+    }),
+  };
+}
+// This is the slowest call the app makes, and it gets slower as sessions pile
+// up, because the model reasons over every session before it answers.
+async function postCoachNote(payload) {
+  const send = () => apiFetch("/api/coach-note", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeoutMs: 120000,
+  });
+  try {
+    return await send();
+  } catch (e) {
+    // A 502 means the model replied but the server couldn't use the reply —
+    // in practice, JSON that came back cut off. That's borderline rather than
+    // permanent, so it's worth one more go before giving up.
+    if (e.status !== 502) throw e;
+    return await send();
+  }
+}
+// One generic message for every failure made a wrong PIN, a rate limit and a
+// server-side AI error impossible to tell apart from the phone.
+function coachErrorText(e) {
+  const status = e && e.status;
+  const detail = String((e && e.message) || "").trim();
+  if (status === 503) return "AI analysis isn't set up on the server yet";
+  if (status === 401) return "Server rejected the PIN — re-enter it under Cloud Sync";
+  if (status === 429) return detail || "Too many attempts — try again shortly";
+  if (status === 408) return "AI analysis timed out — the server took too long to answer";
+  if (status === 0) return "Can't reach the server — check your connection";
+  if (status === 502 || status === 500) return "Server couldn't finish the AI analysis" + (detail ? " (" + detail + ")" : "");
+  return "Couldn't get AI analysis" + (detail ? " — " + detail : "");
+}
 // Cached by session count so it doesn't re-bill the API on every page view —
 // it only goes stale when new sessions are logged.
 window.refreshCoachNote = async function (force) {
@@ -777,27 +938,17 @@ window.refreshCoachNote = async function (force) {
 
   state.coachLoading = true; render();
   try {
-    const payload = {
-      sessions: state.sessions.map((s) => {
-        const c = { ...s };
-        delete c.id;
-        return c;
-      }),
-      goals: state.goals,
-    };
-    const note = await apiFetch("/api/coach-note", { method: "POST", body: JSON.stringify(payload) });
+    const note = await postCoachNote(buildCoachPayload());
     if (note && note.summary) {
       note.generatedAt = new Date().toISOString();
       note.sessionCount = state.sessions.length;
       state.coachNote = note;
       try { localStorage.setItem(COACH_CACHE_KEY, JSON.stringify(note)); } catch (e) {}
     } else {
-      showToast("AI analysis returned nothing usable");
+      showToast("AI analysis returned nothing usable", 4000);
     }
   } catch (e) {
-    showToast(String(e.message || "").includes("503")
-      ? "AI analysis isn't set up on the server yet"
-      : "Couldn't get AI analysis — showing the basic note");
+    showToast(coachErrorText(e), 5000);
   } finally {
     state.coachLoading = false;
     render();
@@ -1007,7 +1158,7 @@ window.printRecap = function () {
   const prevWeek = d.weekly.find((w) => w.week === prevWeekKey) || { attempts: 0, makes: 0, points: 0, dribbleMin: 0, shootingPct: null };
   const fgDelta = d.thisWeek.shootingPct !== null && prevWeek.shootingPct !== null ? Math.round((d.thisWeek.shootingPct - prevWeek.shootingPct) * 10) / 10 : null;
   recap.innerHTML = `
-    <div class="rp-title">ELLA / TRACKER — Weekly Recap</div>
+    <div class="rp-title">SHOOTING / IQ — Weekly Recap</div>
     <div class="rp-sub">Week of ${fmtShort(getMonday(todayStr()))} · Generated ${fmtShort(todayStr())}</div>
     <div class="rp-section">
       <div class="rp-label">Shooting</div>
@@ -1060,7 +1211,7 @@ window.exportData = function () {
   const blob = new Blob([JSON.stringify(state.sessions, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "ella-sessions.json";
+  a.href = url; a.download = "shootingiq-sessions.json";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 };
@@ -1083,7 +1234,7 @@ window.exportCsv = function () {
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `ella-sessions-${todayStr()}.csv`;
+  a.href = url; a.download = `shootingiq-sessions-${todayStr()}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast("CSV exported");
@@ -1258,7 +1409,88 @@ function computeDerived() {
   }
   const badgeList = Object.values(badgeMap).sort((a, b) => (gradeRank[b.grade] || 0) - (gradeRank[a.grade] || 0) || b.count - a.count);
 
-  return { weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm, badgeList };
+  // --- Per-session series -----------------------------------------------
+  // Week is too coarse a bucket early on: a handful of sessions collapse into
+  // one or two bars and every chart built on them says nothing. The session is
+  // the finest grain that always has as many points as there are workouts.
+  const pct1 = (m, a) => (a > 0 ? Math.round((m / a) * 1000) / 10 : null);
+  const bySession = shootingByDate.map((s) => ({
+    date: s.date,
+    time: s.time || null,
+    label: s.label || null,
+    attempts: s.attempts,
+    makes: s.makes,
+    swishes: s.swishes === null || s.swishes === undefined ? null : s.swishes,
+    pct: pct1(s.makes, s.attempts),
+    swishPct: pct1(s.swishes || 0, s.attempts),
+    zones: ["close", "mid", "long"].reduce((acc, z) => {
+      const att = s[z + "Attempts"] || 0;
+      acc[z] = { attempts: att, makes: s[z + "Makes"] || 0, pct: pct1(s[z + "Makes"] || 0, att) };
+      return acc;
+    }, {}),
+    spinRate: s.spinRate ?? null,
+    releaseTime: s.releaseTime ?? null,
+    shotArc: s.shotArc ?? null,
+    intensity: s.intensity ?? null,
+    duration: s.duration ?? null,
+    shotForm: s.shotForm || null,
+    shotType: s.shotType || null,
+  }));
+
+  // A single career average hides how much a session-to-session figure moves.
+  const pctVals = bySession.map((s) => s.pct).filter((v) => v !== null);
+  const pctSpread = pctVals.length
+    ? {
+        min: Math.min(...pctVals),
+        max: Math.max(...pctVals),
+        latest: pctVals[pctVals.length - 1],
+        avg: Math.round((pctVals.reduce((a, v) => a + v, 0) / pctVals.length) * 10) / 10,
+        count: pctVals.length,
+      }
+    : null;
+
+  // Logging one workout twice from two screenshots skews every total, but two
+  // real sessions back to back can share an attempt count, so matching
+  // attempts alone is not evidence. A double-log reproduces the session
+  // totals exactly — attempts, makes and swishes — which two different
+  // workouts effectively never do.
+  const dupeMap = {};
+  for (const s of shootingByDate) {
+    const key = [s.date, s.attempts, s.makes, s.swishes === null || s.swishes === undefined ? "" : s.swishes].join("|");
+    (dupeMap[key] = dupeMap[key] || []).push(s);
+  }
+  const duplicates = Object.values(dupeMap)
+    .filter((g) => g.length > 1)
+    .map((g) => ({
+      date: g[0].date,
+      attempts: g[0].attempts,
+      makes: g[0].makes,
+      count: g.length,
+      times: g.map((s) => s.time || null),
+      ids: g.map((s) => s.id),
+      // Identical totals but different zone splits means the same screenshot
+      // was read two different ways — the one case worth stating outright.
+      conflicting: new Set(g.map((s) => `${s.closeAttempts}|${s.midAttempts}|${s.longAttempts}`)).size > 1,
+    }));
+
+  // DribbleUp reports a shot type per session; nothing aggregated it before, so
+  // "catch & shoot days go worse than relaxed days" was invisible.
+  const typeMap = {};
+  for (const s of shootingSessions) {
+    if (!s.shotType) continue;
+    const name = String(s.shotType).replace(/^\s*\d+%\s*/, "").trim().toLowerCase();
+    if (!name) continue;
+    if (!typeMap[name]) typeMap[name] = { shotType: name, attempts: 0, makes: 0, sessions: 0 };
+    typeMap[name].attempts += s.attempts;
+    typeMap[name].makes += s.makes;
+    typeMap[name].sessions += 1;
+  }
+  const shotTypes = Object.values(typeMap)
+    .map((t) => ({ ...t, pct: pct1(t.makes, t.attempts) }))
+    .sort((a, b) => b.attempts - a.attempts);
+
+  return { bySession, pctSpread, duplicates, shotTypes,
+    weekly, thisWeek, weekStreak, shootingSessions, dribblingSessions, overallPct, totalPoints, dayStreak, totalClose, totalMid, totalLong, hasZoneData, zoneStats, hasZoneAttempts, practicedDates, insight, bests: { bestPct, mostMakes, longestStreak }, drillStats, thisMonth, lastMonth, thisMonthKey, mechanics, formCounts, latestForm, badgeList };
 }
 
 /* ---------- render ---------- */
@@ -1280,7 +1512,7 @@ function render() {
     <div style="padding:28px 20px 18px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div>
-          <div class="h-brand" style="font-size:30px;line-height:1;color:#fff">ELLA<span class="slash"></span>TRACKER</div>
+          <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">SHOOTING<span class="slash"></span>IQ</div>
           <div style="font-size:12.5px;color:var(--gray);margin-top:6px;letter-spacing:0.03em;text-transform:uppercase">Same Standards. Relentless Growth.</div>
         </div>
         <span class="sync-pill ${syncPillClass}">${syncDot}${syncPillText}</span>
@@ -1333,6 +1565,16 @@ function render() {
   }
 }
 
+window.updateProfile = function (val) { state.profile = val; persistProfile(); };
+function renderProfileCard() {
+  return `<div class="card">
+    <div class="section-label" style="margin:0 0 10px">Player Context</div>
+    <div style="font-size:12px;color:var(--gray);margin-bottom:12px;line-height:1.5">A few lines about the player — position, height, what her team coach is working on, anything in season right now. The AI note reads this, so the more it knows the less generic the advice.</div>
+    <div class="field">
+      <textarea class="input" id="f-profile" rows="4" style="resize:vertical;line-height:1.5" placeholder="e.g. 14U point guard, 5'4&quot;, plays up an age group. Team coach wants her creating off the dribble. Travel season through November." oninput="updateProfile(this.value)">${state.profile}</textarea>
+    </div>
+  </div>`;
+}
 function renderSyncCard() {
   return `<div class="card sync-card">
     <div class="section-label" style="margin:0 0 10px">Cloud Sync (Railway)</div>
@@ -1357,7 +1599,7 @@ function renderDashboard() {
     return `
       <div style="padding:0 20px">
         <div class="card empty-box">
-          <div style="font-size:15px;color:#cbd3e0;margin-bottom:14px">No sessions logged yet.</div>
+          <div style="font-size:15px;color:var(--ink-2);margin-bottom:14px">No sessions logged yet.</div>
           <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
             <button class="btn-primary" onclick="setTab('log')">+ Log first session</button>
             <button class="btn-ghost" onclick="loadDemo()">Load demo month</button>
@@ -1374,12 +1616,34 @@ function renderDashboard() {
 
   let html = `<div style="padding:0 20px">`;
 
-  html += `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-    <div class="stat-card"><div style="margin-bottom:6px">${flame}</div><div class="stat-value">${d.dayStreak}<span class="stat-suffix">${d.dayStreak === 1 ? " day" : " days"}</span></div><div class="stat-label">Day Streak</div></div>
-    <div class="stat-card"><div style="margin-bottom:6px">${flame}</div><div class="stat-value">${d.weekStreak}<span class="stat-suffix">${d.weekStreak === 1 ? "wk" : "wks"}</span></div><div class="stat-label">Week Streak</div></div>
-    <div class="stat-card"><div style="margin-bottom:6px">${target}</div><div class="stat-value">${d.overallPct !== null ? d.overallPct : "—"}<span class="stat-suffix">${d.overallPct !== null ? "%" : ""}</span></div><div class="stat-label">Career FG%</div></div>
-    <div class="stat-card"><div style="margin-bottom:6px">${zap}</div><div class="stat-value">${d.totalPoints}</div><div class="stat-label">Dribble Pts</div></div>
+  const heroPct = d.pctSpread ? d.pctSpread.latest : d.overallPct;
+  const totalShots = d.shootingSessions.reduce((a, s) => a + s.attempts, 0);
+  html += `<div class="hero">
+    <div class="hero-value">${heroPct !== null && heroPct !== undefined ? heroPct : "—"}<span class="hero-suffix">%</span></div>
+    <div class="hero-label">${d.pctSpread ? "Last session FG%" : "Career FG%"}</div>
+    ${d.pctSpread ? `<div class="hero-sub">Career ${d.overallPct}% · ${d.pctSpread.min}–${d.pctSpread.max}% across ${d.pctSpread.count} sessions</div>` : ""}
+    <div class="hero-row">
+      <div class="hero-stat"><div class="hero-stat-v">${d.shootingSessions.length}</div><div class="hero-stat-l">Sessions</div></div>
+      <div class="hero-stat"><div class="hero-stat-v">${totalShots}</div><div class="hero-stat-l">Shots</div></div>
+      <div class="hero-stat"><div class="hero-stat-v">${d.dayStreak}<span class="stat-suffix">d</span></div><div class="hero-stat-l">Streak</div></div>
+      ${d.dribblingSessions.length ? `<div class="hero-stat"><div class="hero-stat-v">${d.totalPoints}</div><div class="hero-stat-l">Dribble Pts</div></div>` : ""}
+    </div>
   </div>`;
+
+  if (d.duplicates.length) {
+    const dupText = d.duplicates.map((g) => {
+      const when = g.times.filter(Boolean).join(" and ");
+      return `${g.count} sessions on ${fmtShort(g.date)} with identical totals — ${g.makes}/${g.attempts}${when ? ` (${when})` : ""}`;
+    }).join("; ");
+    const conflicting = d.duplicates.some((g) => g.conflicting);
+    html += `<div class="reminder-banner alert">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <div style="flex:1">
+        <div class="reminder-title" style="color:var(--red)">Check these match up</div>
+        <div class="reminder-text">${dupText}. ${conflicting ? "The zone splits differ, so this looks like one screenshot read two different ways." : "If that was one workout logged twice, delete one in the session log below — otherwise ignore this."}</div>
+      </div>
+    </div>`;
+  }
 
   const pace = computePace(d.thisWeek, state.goals);
   const paceParts = [];
@@ -1408,12 +1672,18 @@ function renderDashboard() {
         <button class="btn-link" style="font-size:10.5px" ${state.coachLoading ? "disabled" : ""} onclick="refreshCoachNote(true)">${state.coachLoading ? "Analyzing…" : "Refresh"}</button>
       </div>
       <div class="insight-text" style="margin-bottom:10px">${note.summary}</div>
-      ${note.focus ? `<div style="font-size:12.5px;color:#ffd9b3;background:rgba(244,123,32,0.10);border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${note.focus}</div>` : ""}
-      ${note.benchmarks ? `<div style="font-size:12px;color:#cbd3e0;line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${note.benchmarks}</div>` : ""}
+      ${note.progress ? `<div style="font-size:12.5px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Since last note</strong>${note.progress}</div>` : ""}
+      ${note.focus ? `<div style="font-size:12.5px;color:var(--ink);background:#fdf1e6;border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${note.focus}</div>` : ""}
+      ${Array.isArray(note.plan) && note.plan.length ? `<div style="width:100%;margin-bottom:10px">
+        <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Next practice</div>
+        ${note.plan.map((p) => `<div style="font-size:12.5px;color:var(--ink);line-height:1.45;margin-bottom:7px;padding-left:10px;border-left:2px solid var(--navy-line)"><strong>${p.drill}</strong> — ${p.target}${p.why ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-top:2px">${p.why}</div>` : ""}</div>`).join("")}
+      </div>` : ""}
+      ${note.dataGaps ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.45;margin-bottom:10px"><strong>Worth checking:</strong> ${note.dataGaps}</div>` : ""}
+      ${note.benchmarks ? `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${note.benchmarks}</div>` : ""}
       ${note.goals && (note.goals.shots || note.goals.dribbleMinutes) ? `
         <div style="width:100%;border-top:1px solid var(--navy-line);padding-top:10px">
           <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Suggested next week</div>
-          <div style="font-size:12.5px;color:#e4e9f1;margin-bottom:3px">${note.goals.shots || state.goals.shots} shots · ${note.goals.dribbleMinutes || state.goals.dribbleMinutes} DribbleUp min</div>
+          <div style="font-size:12.5px;color:var(--ink);margin-bottom:3px">${note.goals.shots || state.goals.shots} shots · ${note.goals.dribbleMinutes || state.goals.dribbleMinutes} DribbleUp min</div>
           ${note.goals.rationale ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-bottom:8px">${note.goals.rationale}</div>` : ""}
           <button class="btn-ghost" style="padding:7px 13px;font-size:11.5px" onclick="applySuggestedGoals()">Use these goals</button>
         </div>` : ""}
@@ -1448,7 +1718,7 @@ function renderDashboard() {
     <div style="font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Weekly Goals</div>
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-        <span style="font-size:13px;color:#e4e9f1;font-weight:600">Shots</span>
+        <span style="font-size:13px;color:var(--ink);font-weight:600">Shots</span>
         <span style="font-size:12.5px;color:${shotsMet ? "var(--green)" : "var(--gray)"}">${d.thisWeek.attempts} / <input class="input" id="f-goal-shots" type="number" min="1" value="${state.goals.shots}" oninput="updateGoal('shots', this.value)" style="display:inline-block;width:56px;padding:2px 6px;font-size:12.5px;text-align:center" /></span>
       </div>
       <div style="height:8px;border-radius:99px;background:var(--navy-line);overflow:hidden">
@@ -1457,7 +1727,7 @@ function renderDashboard() {
     </div>
     <div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-        <span style="font-size:13px;color:#e4e9f1;font-weight:600">DribbleUp minutes</span>
+        <span style="font-size:13px;color:var(--ink);font-weight:600">DribbleUp minutes</span>
         <span style="font-size:12.5px;color:${dribbleMet ? "var(--green)" : "var(--gray)"}">${d.thisWeek.dribbleMin} / <input class="input" id="f-goal-dribbleMinutes" type="number" min="1" value="${state.goals.dribbleMinutes}" oninput="updateGoal('dribbleMinutes', this.value)" style="display:inline-block;width:56px;padding:2px 6px;font-size:12.5px;text-align:center" /> min</span>
       </div>
       <div style="height:8px;border-radius:99px;background:var(--navy-line);overflow:hidden">
@@ -1468,35 +1738,72 @@ function renderDashboard() {
 
   const prevWeekKey = addDays(getMonday(todayStr()), -7);
   const prevWeek = d.weekly.find((w) => w.week === prevWeekKey) || { attempts: 0, makes: 0, points: 0, reps: 0, dribbleMin: 0, shootingPct: null };
-  html += `<div class="card">
-    <div class="section-label" style="margin:0 0 10px">This Week vs Last Week</div>
-    ${trendRow("FG%", d.thisWeek.shootingPct !== null ? `${d.thisWeek.shootingPct}%` : "—", d.thisWeek.shootingPct, prevWeek.shootingPct, "pp")}
-    ${trendRow("Shots", d.thisWeek.attempts, d.thisWeek.attempts, prevWeek.attempts, "")}
-    ${trendRow("Dribble Pts", d.thisWeek.points, d.thisWeek.points, prevWeek.points, "")}
-    ${trendRow("DribbleUp Min", d.thisWeek.dribbleMin, d.thisWeek.dribbleMin, prevWeek.dribbleMin, "")}
-  </div>`;
+  const hasDribbling = d.dribblingSessions.length > 0;
+  const dribbleRows = (cur, prev) => hasDribbling
+    ? trendRow("Dribble Pts", cur.points, cur.points, prev.points, "") +
+      trendRow("DribbleUp Min", cur.dribbleMin, cur.dribbleMin, prev.dribbleMin, "")
+    : "";
+  const periodHasData = (p) => (p.attempts || 0) > 0 || (p.points || 0) > 0 || (p.dribbleMin || 0) > 0;
 
-  html += `<div class="card">
-    <div class="section-label" style="margin:0 0 10px">${fmtMonthLabel(d.thisMonthKey)} vs Last Month</div>
-    ${trendRow("FG%", d.thisMonth.shootingPct !== null ? `${d.thisMonth.shootingPct}%` : "—", d.thisMonth.shootingPct, d.lastMonth.shootingPct, "pp")}
-    ${trendRow("Shots", d.thisMonth.attempts, d.thisMonth.attempts, d.lastMonth.attempts, "")}
-    ${trendRow("Dribble Pts", d.thisMonth.points, d.thisMonth.points, d.lastMonth.points, "")}
-    ${trendRow("DribbleUp Min", d.thisMonth.dribbleMin, d.thisMonth.dribbleMin, d.lastMonth.dribbleMin, "")}
-  </div>`;
+  if (periodHasData(d.thisWeek) && periodHasData(prevWeek)) {
+    html += `<div class="card">
+      <div class="section-label" style="margin:0 0 10px">This Week vs Last Week</div>
+      ${trendRow("FG%", d.thisWeek.shootingPct !== null ? `${d.thisWeek.shootingPct}%` : "—", d.thisWeek.shootingPct, prevWeek.shootingPct, "pp")}
+      ${trendRow("Shots", d.thisWeek.attempts, d.thisWeek.attempts, prevWeek.attempts, "")}
+      ${dribbleRows(d.thisWeek, prevWeek)}
+    </div>`;
+  }
 
-  if (d.weekly.some((w) => w.shootingPct !== null)) {
+  if (periodHasData(d.thisMonth) && periodHasData(d.lastMonth)) {
+    html += `<div class="card">
+      <div class="section-label" style="margin:0 0 10px">${fmtMonthLabel(d.thisMonthKey)} vs Last Month</div>
+      ${trendRow("FG%", d.thisMonth.shootingPct !== null ? `${d.thisMonth.shootingPct}%` : "—", d.thisMonth.shootingPct, d.lastMonth.shootingPct, "pp")}
+      ${trendRow("Shots", d.thisMonth.attempts, d.thisMonth.attempts, d.lastMonth.attempts, "")}
+      ${dribbleRows(d.thisMonth, d.lastMonth)}
+    </div>`;
+  }
+
+  if (d.pctSpread && d.pctSpread.count >= 2) {
+    html += `<div class="card" style="padding:14px 8px 6px">
+      <div class="chart-title">Shooting % by Session</div>
+      <div style="font-size:11px;color:var(--gray);padding:0 6px 6px">${d.pctSpread.min}–${d.pctSpread.max}% across ${d.pctSpread.count} sessions · average ${d.pctSpread.avg}%</div>
+      <canvas id="chartFgSession" height="180"></canvas>
+    </div>`;
+  }
+  // Long range needs enough attempts to mean anything; below that it is a flat
+  // line at zero that makes the two real zones harder to read.
+  const zonesWorthCharting = d.zoneStats.filter((z) => z.attempts >= 5);
+  if (d.bySession.length >= 2 && zonesWorthCharting.length >= 1) {
+    const thin = d.zoneStats.filter((z) => z.attempts > 0 && z.attempts < 5);
+    html += `<div class="card" style="padding:14px 8px 6px">
+      <div class="chart-title">Zone FG% by Session</div>
+      ${thin.length ? `<div style="font-size:11px;color:var(--gray);padding:0 6px 6px">${thin.map((z) => `${z.label} left out — only ${z.attempts} attempt${z.attempts === 1 ? "" : "s"} logged`).join("; ")}</div>` : ""}
+      <canvas id="chartZoneSession" height="180"></canvas>
+    </div>`;
+  }
+  // Weekly views stay, but only once there are two weeks to compare.
+  const weeksWithShooting = d.weekly.filter((w) => w.hasShooting).length;
+  if (weeksWithShooting >= 4 && d.weekly.some((w) => w.shootingPct !== null)) {
     html += `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Shooting % by Week</div><canvas id="chartFg" height="180"></canvas></div>`;
   }
-  if (d.weekly.some((w) => w.hasShooting)) {
+  if (weeksWithShooting >= 4) {
     html += `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Attempts vs Makes</div><canvas id="chartAttempts" height="180"></canvas></div>`;
   }
   if (d.hasZoneData) {
+    const zoneColor = { close: "var(--blue)", mid: "var(--orange)", long: "var(--green)" };
     html += `<div style="display:flex;gap:10px;margin-bottom:14px">
-      <div class="zone-pill"><div class="zone-dot" style="background:var(--blue)"></div><div style="font-size:17px;font-weight:700;color:#fff">${d.totalClose}</div><div style="font-size:10px;color:var(--gray)">Close</div></div>
-      <div class="zone-pill"><div class="zone-dot" style="background:var(--orange)"></div><div style="font-size:17px;font-weight:700;color:#fff">${d.totalMid}</div><div style="font-size:10px;color:var(--gray)">Mid</div></div>
-      <div class="zone-pill"><div class="zone-dot" style="background:var(--green)"></div><div style="font-size:17px;font-weight:700;color:#fff">${d.totalLong}</div><div style="font-size:10px;color:var(--gray)">Long</div></div>
+      ${d.zoneStats.map((z) => `<div class="zone-pill"><div class="zone-dot" style="background:${zoneColor[z.zone]}"></div><div style="font-size:17px;font-weight:700;color:#fff">${z.pct !== null ? z.pct + "%" : "—"}</div><div style="font-size:10px;color:var(--gray)">${z.zone === "close" ? "Close" : z.zone === "mid" ? "Mid" : "Long"} · ${z.makes}/${z.attempts}</div></div>`).join("")}
     </div>
-    <div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>`;
+    ${weeksWithShooting >= 4 ? `<div class="card" style="padding:14px 8px 6px"><div class="chart-title">Makes by Zone, by Week</div><canvas id="chartZones" height="180"></canvas></div>` : ""}`;
+  }
+  if (d.shotTypes.length >= 2) {
+    html += `<div class="card">
+      <div class="chart-title" style="padding:0 0 8px">By Shot Type</div>
+      ${d.shotTypes.map((t) => `<div class="trend-row">
+        <span class="trend-label">${t.shotType}<span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">${t.makes}/${t.attempts} over ${t.sessions} session${t.sessions === 1 ? "" : "s"}</span></span>
+        <span class="trend-value">${t.pct}%</span>
+      </div>`).join("")}
+    </div>`;
   }
   if (d.badgeList && d.badgeList.length) {
     html += `<div class="card">
@@ -1516,7 +1823,7 @@ function renderDashboard() {
       const barPct = z.pct !== null ? Math.min(100, z.pct) : 0;
       html += `<div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
-          <span style="font-size:12.5px;color:#e4e9f1;font-weight:600">${z.label}</span>
+          <span style="font-size:12.5px;color:var(--ink);font-weight:600">${z.label}</span>
           <span style="font-size:12px;color:var(--gray)">${z.makes}/${z.attempts} · <strong style="color:#fff">${z.pct}%</strong>${z.swishes > 0 ? ` · ${z.swishPct}% swish` : ""}</span>
         </div>
         <div style="height:7px;border-radius:99px;background:var(--navy-line);overflow:hidden">
@@ -1558,7 +1865,7 @@ function renderDashboard() {
           <span class="trend-label">Shot form</span>
           <span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">consistent in ${d.formCounts.Consistent} of ${total} session${total === 1 ? "" : "s"} (${consistentPct}%)</span>
         </span>
-        <span class="trend-value" style="color:${(d.latestForm.shotForm || "").toLowerCase() === "consistent" ? "var(--green)" : "#ff8a8a"}">${d.latestForm.shotForm}</span>
+        <span class="trend-value" style="color:${(d.latestForm.shotForm || "").toLowerCase() === "consistent" ? "var(--green)" : "var(--red)"}">${d.latestForm.shotForm}</span>
       </div>`;
     }
     html += `</div>`;
@@ -1631,6 +1938,7 @@ function renderDashboard() {
     </div>`;
   }
 
+  html += renderProfileCard();
   html += renderSyncCard();
 
   html += `<div style="text-align:center;margin-top:18px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
@@ -1940,7 +2248,7 @@ function renderLogForm() {
 
   if (state.editingId) {
     html += `<div style="background:rgba(95,208,165,0.10);border:1px solid var(--green);border-radius:10px;padding:11px 13px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-      <span style="font-size:12.5px;color:#d7f5e9">Editing an existing session</span>
+      <span style="font-size:12.5px;color:var(--green)">Editing an existing session</span>
       <button class="btn-ghost" style="padding:6px 12px;font-size:11.5px" onclick="cancelEdit()">Cancel</button>
     </div>`;
   }
@@ -1953,7 +2261,7 @@ function renderLogForm() {
       <button class="btn-link" style="margin-top:10px" onclick="toggleOcrDebug()">${state.showOcrDebug ? "Hide" : "Show"} raw OCR text (debug)</button>
       ${state.showOcrDebug ? `
         <div style="margin-top:10px;text-align:left">
-          <textarea readonly id="f-ocr-raw" style="width:100%;height:150px;background:#0a1526;border:1px solid var(--navy-line);border-radius:8px;color:#cbd3e0;font-family:monospace;font-size:11px;padding:8px;line-height:1.4">${state.lastOcrRaw.replace(/</g, "&lt;")}</textarea>
+          <textarea readonly id="f-ocr-raw" style="width:100%;height:150px;background:var(--surface);border:1px solid var(--navy-line);border-radius:8px;color:var(--ink-2);font-family:monospace;font-size:11px;padding:8px;line-height:1.4">${state.lastOcrRaw.replace(/</g, "&lt;")}</textarea>
           <button class="btn-ghost" style="margin-top:8px;width:100%;padding:8px" onclick="copyOcrRaw()">Copy raw text</button>
         </div>` : ""}
     ` : ""}
@@ -1979,7 +2287,7 @@ function renderLogForm() {
       </div>`;
     }
     if (s._ocrLowConfidence || s._ocrSwapped) {
-      html += `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#ffd9b3;line-height:1.5">
+      html += `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--ink);line-height:1.5">
         ⚠️ ${s._ocrSwapped ? "Attempts/Makes looked swapped and were auto-corrected." : "Couldn't clearly read all 3 numbers (Attempts/Makes/Swishes) from the screenshot."} Please check these against the actual screenshot before saving.
       </div>`;
     }
@@ -1996,12 +2304,12 @@ function renderLogForm() {
     html += `<div class="field">
       <label>Shots by distance ${ocrTag(s, "closeAttempts")}</label>
       <div style="font-size:10.5px;color:var(--gray);margin:-2px 0 8px">Attempts / makes / swishes per zone. Import the "Shots by distance" popup to fill automatically.</div>
-      ${s._zoneGuess ? `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;color:#ffd9b3;line-height:1.45">
+      ${s._zoneGuess ? `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;color:var(--ink);line-height:1.45">
         ⚠️ Close vs Mid can't be told apart from the screenshot text — check them against the popup.
         <button type="button" onclick="swapCloseMid()" style="display:block;margin-top:7px;background:var(--orange);color:var(--navy);border:none;border-radius:7px;padding:6px 12px;font-weight:700;font-size:11.5px;cursor:pointer">⇅ Swap Close / Mid</button>
       </div>` : ""}
       ${s._zoneMakesCheck === "ok" ? `<div style="font-size:11px;color:var(--green);margin-bottom:9px">✓ Zone makes add up to the session total — pairing looks right.</div>` : ""}
-      ${s._zoneMakesCheck === "mismatch" ? `<div style="font-size:11px;color:#ff8a8a;margin-bottom:9px">⚠️ Zone makes don't match the session total — please verify.</div>` : ""}
+      ${s._zoneMakesCheck === "mismatch" ? `<div style="font-size:11px;color:var(--red);margin-bottom:9px">⚠️ Zone makes don't match the session total — please verify.</div>` : ""}
       ${["close", "mid", "long"].map((z) => {
         const name = z === "close" ? "Close" : z === "mid" ? "Mid" : "Long";
         return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
@@ -2037,7 +2345,7 @@ function renderLogForm() {
     html += fieldHtml("Duration (min)", `<input class="input" id="f-dribbling-duration" type="number" min="0" value="${dr.duration}" oninput="updateDribbling('duration', this.value)" />`);
   }
 
-  if (state.error) html += `<div style="color:#ff8a8a;font-size:12.5px;margin-bottom:10px">${state.error}</div>`;
+  if (state.error) html += `<div style="color:var(--red);font-size:12.5px;margin-bottom:10px">${state.error}</div>`;
   html += `<button class="btn-primary" style="width:100%;margin-top:6px" onclick="handleAdd()">${state.editingId ? "Save Changes" : "Log Session"}</button>`;
   html += `</div>`;
   return html;
@@ -2046,7 +2354,7 @@ function renderLogForm() {
 /* ---------- charts ---------- */
 function drawCharts() {
   const d = computeDerived();
-  const gray = "#8a96a8", navyLine = "#233a56", orange = "#f47b20", navyLightBar = "#233a56";
+  const gray = "#6b6b6b", navyLine = "#e4e4e4", orange = "#f47b20", navyLightBar = "#d8d8d8";
   Chart.defaults.font.family = "'Inter', sans-serif";
 
   if (document.getElementById("chartFg")) {
@@ -2056,6 +2364,45 @@ function drawCharts() {
       data: { labels: d.weekly.map((w) => w.label), datasets: [{ label: "FG%", data: d.weekly.map((w) => w.shootingPct), borderColor: orange, backgroundColor: orange, tension: 0.35, spanGaps: true, pointRadius: 3 }] },
       options: { responsive: true, plugins: { legend: { display: false } }, scales: {
         x: { ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } },
+        y: { min: 0, max: 100, ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } }
+      } }
+    });
+  }
+  // Sessions are discrete workouts at irregular intervals, so bars: a line
+  // would draw a slope between two dates that has no reading in between.
+  const sessionLabel = (s) => fmtShort(s.date) + (s.time ? " " + fmtTime(s.time) : "");
+  if (document.getElementById("chartFgSession")) {
+    destroyChart("fgSession");
+    charts.fgSession = new Chart(document.getElementById("chartFgSession"), {
+      type: "bar",
+      data: { labels: d.bySession.map(sessionLabel), datasets: [{ label: "FG%", data: d.bySession.map((s) => s.pct), backgroundColor: orange, borderRadius: 4 }] },
+      options: { responsive: true, plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: (c) => { const s = d.bySession[c.dataIndex]; return `${s.makes}/${s.attempts} · ${s.pct}%`; } } } }, scales: {
+        x: { ticks: { color: gray, font: { size: 9 }, maxRotation: 0, autoSkip: false }, grid: { display: false } },
+        y: { min: 0, max: 100, ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } }
+      } }
+    });
+  }
+  if (document.getElementById("chartZoneSession")) {
+    destroyChart("zoneSession");
+    // Picked against the light card surface and checked with the palette
+    // validator: in band, and separable under every simulated CVD type.
+    const zoneSeries = [
+      { key: "close", label: "Close", color: "#2f6fb5" },
+      { key: "mid", label: "Mid", color: "#e06c0a" },
+      { key: "long", label: "Long", color: "#1f7a52" },
+    ].filter((z) => d.zoneStats.find((s) => s.zone === z.key && s.attempts >= 5));
+    charts.zoneSession = new Chart(document.getElementById("chartZoneSession"), {
+      type: "line",
+      data: { labels: d.bySession.map(sessionLabel), datasets: zoneSeries.map((z) => ({
+        label: z.label, data: d.bySession.map((s) => s.zones[z.key].pct),
+        borderColor: z.color, backgroundColor: z.color, borderWidth: 2,
+        tension: 0.25, spanGaps: true, pointRadius: 4,
+      })) },
+      options: { responsive: true, plugins: { legend: { labels: { color: gray, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (c) => { const z = zoneSeries[c.datasetIndex].key, s = d.bySession[c.dataIndex];
+          return `${zoneSeries[c.datasetIndex].label}: ${s.zones[z].makes}/${s.zones[z].attempts} · ${s.zones[z].pct}%`; } } } }, scales: {
+        x: { ticks: { color: gray, font: { size: 9 }, maxRotation: 0, autoSkip: false }, grid: { display: false } },
         y: { min: 0, max: 100, ticks: { color: gray, font: { size: 10 } }, grid: { color: navyLine } }
       } }
     });
@@ -2079,9 +2426,9 @@ function drawCharts() {
     charts.zones = new Chart(document.getElementById("chartZones"), {
       type: "bar",
       data: { labels: d.weekly.map((w) => w.label), datasets: [
-        { label: "Close", data: d.weekly.map((w) => w.close), backgroundColor: "#5b9bd5" },
+        { label: "Close", data: d.weekly.map((w) => w.close), backgroundColor: "#2f6fb5" },
         { label: "Mid", data: d.weekly.map((w) => w.mid), backgroundColor: orange },
-        { label: "Long", data: d.weekly.map((w) => w.long), backgroundColor: "#5fd0a5" }
+        { label: "Long", data: d.weekly.map((w) => w.long), backgroundColor: "#1f7a52" }
       ] },
       options: { responsive: true, plugins: { legend: { labels: { color: gray, font: { size: 11 } } } }, scales: {
         x: { stacked: true, ticks: { color: gray, font: { size: 10 } }, grid: { display: false } },

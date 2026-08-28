@@ -1,6 +1,6 @@
 {
-  "name": "Ella Tracker",
-  "short_name": "Ella Tracker",
+  "name": "ShootingIQ",
+  "short_name": "ShootingIQ",
   "description": "Shooting and dribbling practice tracker",
   "start_url": "./index.html",
   "scope": "./",
