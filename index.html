@@ -50,17 +50,24 @@
   input, select, textarea { font-family: inherit; }
   input:focus, select:focus, textarea:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
 
-  /* Hero — one number carries the screen, everything else sits under it. */
-  .hero { padding: 2px 0 20px; }
+  /* Hero — one number carries the screen, everything else sits under it.
+     The whole block shares one condensed family so the eye reads a single
+     voice; the display face's tall ascender is trimmed with a negative top
+     margin so the number does not float in its own line box. */
+  .hero { padding: 0 0 20px; }
   .hero-value { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 800;
-    font-size: clamp(64px, 22vw, 92px); line-height: 0.84; letter-spacing: -0.02em; color: var(--ink); }
-  .hero-suffix { font-size: 0.4em; }
-  .hero-label { font-size: 15px; color: var(--ink-2); margin-top: 12px; }
-  .hero-sub { font-size: 13px; color: var(--ink-2); margin-top: 5px; }
-  .hero-row { display: flex; gap: 10px; margin-top: 22px; }
+    font-size: clamp(58px, 19vw, 78px); line-height: 1; letter-spacing: -0.01em; color: var(--ink);
+    display: flex; align-items: baseline; gap: 2px; margin: -0.1em 0 0; }
+  /* Sits up near the cap height instead of stranded on the baseline. */
+  .hero-suffix { font-size: 0.34em; font-weight: 700; align-self: flex-start; margin-top: 0.42em; }
+  .hero-label { font-size: 15px; font-weight: 600; color: var(--ink); margin-top: 6px; }
+  .hero-sub { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
+  .hero-row { display: flex; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
   .hero-stat { flex: 1; min-width: 0; }
-  .hero-stat-v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
-  .hero-stat-l { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+  .hero-stat-v { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 32px;
+    line-height: 1; color: var(--ink); }
+  .hero-stat-v .stat-suffix { font-family: 'Inter', system-ui, sans-serif; font-size: 13px; font-weight: 600; }
+  .hero-stat-l { font-size: 12.5px; color: var(--ink-2); margin-top: 5px; }
 
   .card { background: var(--surface); border: none; border-radius: 18px; padding: 18px; margin-bottom: 12px; }
   .stat-card { flex: 1 1 calc(50% - 5px); min-width: 130px; background: var(--surface); border: none; border-radius: 18px; padding: 14px; }
@@ -1509,8 +1516,8 @@ function render() {
     else { syncPillText = "Connecting…"; }
   }
   const header = `
-    <div style="padding:28px 20px 18px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+    <div style="padding:22px 20px 14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div>
           <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">SHOOTING<span class="slash"></span>IQ</div>
         </div>
