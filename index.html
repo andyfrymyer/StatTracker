@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#0d1b2e" />
+<meta name="theme-color" content="#ffffff" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Ella Tracker" />
 <link rel="manifest" href="manifest.json" />
 <link rel="apple-touch-icon" href="icon-192.png" />
@@ -17,126 +17,153 @@
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root {
-    --navy: #0d1b2e;
-    --navy-light: #13243b;
-    --navy-line: #233a56;
+    /* Near-white ground, near-black ink, colour reserved for data and the
+       brand mark. Weight and space do the separating, not borders. */
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --surface-2: #ebebeb;
+    --ink: #101010;
+    --ink-2: #6b6b6b;
+    --line: #e4e4e4;
     --orange: #f47b20;
-    --gray: #8a96a8;
-    --green: #5fd0a5;
-    --blue: #5b9bd5;
+    --green: #1f9d63;
+    --blue: #2f6fb5;
+    --red: #c62f37;
+    /* Legacy names, kept so existing rules and inline styles still resolve. */
+    --navy: #ffffff;
+    --navy-light: var(--surface);
+    --navy-line: var(--line);
+    --gray: var(--ink-2);
   }
   * { box-sizing: border-box; }
-  html {
-    background: #0d1b2e;
-  }
+  html { background: var(--bg); }
   body {
-    margin: 0; background: var(--navy); color: #eef1f6;
+    margin: 0; background: var(--bg); color: var(--ink);
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
     overscroll-behavior-y: none;
   }
-  #app { max-width: 480px; margin: 0 auto; padding-bottom: 100px; }
+  #app { max-width: 480px; margin: 0 auto; padding-bottom: 124px; }
   .h-brand { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 800; }
   .slash { display:inline-block; width:10px; height:1.1em; background:var(--orange); transform: skewX(-16deg); margin: 0 8px; vertical-align: -3px; }
-  input, select { font-family: inherit; }
-  input:focus, select:focus { outline: 2px solid var(--orange); outline-offset: 1px; }
-  input[type=date]::-webkit-calendar-picker-indicator,
-  input[type=time]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
-  .card { background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
-  .stat-card { flex: 1 1 calc(50% - 5px); min-width: 130px; background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 12px 10px; }
-  .stat-value { font-size: 19px; font-weight: 700; color: #fff; }
-  .stat-suffix { font-size: 12px; color: var(--gray); }
-  .stat-label { font-size: 10px; color: var(--gray); margin-top: 2px; }
+  input, select, textarea { font-family: inherit; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+
+  /* Hero — one number carries the screen, everything else sits under it. */
+  .hero { padding: 2px 0 20px; }
+  .hero-value { font-family: 'Barlow Condensed', sans-serif; font-style: italic; font-weight: 800;
+    font-size: clamp(64px, 22vw, 92px); line-height: 0.84; letter-spacing: -0.02em; color: var(--ink); }
+  .hero-suffix { font-size: 0.4em; }
+  .hero-label { font-size: 15px; color: var(--ink-2); margin-top: 12px; }
+  .hero-sub { font-size: 13px; color: var(--ink-2); margin-top: 5px; }
+  .hero-row { display: flex; gap: 10px; margin-top: 22px; }
+  .hero-stat { flex: 1; min-width: 0; }
+  .hero-stat-v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+  .hero-stat-l { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+
+  .card { background: var(--surface); border: none; border-radius: 18px; padding: 18px; margin-bottom: 12px; }
+  .stat-card { flex: 1 1 calc(50% - 5px); min-width: 130px; background: var(--surface); border: none; border-radius: 18px; padding: 14px; }
+  .stat-value { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+  .stat-suffix { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+  .stat-label { font-size: 12px; color: var(--ink-2); margin-top: 3px; }
   .row { display: flex; gap: 10px; }
   .row > * { flex: 1; }
   .field { margin-bottom: 14px; }
-  .field label { font-size: 11.5px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.04em; display:block; margin-bottom: 5px;}
+  .field label { font-size: 12.5px; color: var(--ink-2); display:block; margin-bottom: 6px; }
   .input {
-    width: 100%; background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 9px;
-    padding: 10px 12px; color: #fff; font-size: 14.5px;
+    width: 100%; background: var(--surface); border: 1px solid transparent; border-radius: 12px;
+    padding: 12px 14px; color: var(--ink); font-size: 15px;
   }
   .btn-primary {
-    background: var(--orange); color: var(--navy); border: none; border-radius: 10px; padding: 12px 18px;
+    background: var(--ink); color: #fff; border: none; border-radius: 999px; padding: 13px 22px;
     font-weight: 700; font-size: 14px; cursor: pointer;
   }
   .btn-ghost {
-    background: transparent; color: var(--gray); border: 1px solid var(--navy-line); border-radius: 10px;
-    padding: 12px 18px; font-weight: 700; font-size: 14px; cursor: pointer;
+    background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 999px;
+    padding: 13px 22px; font-weight: 700; font-size: 14px; cursor: pointer;
   }
-  .btn-link { background:none; border:none; color: var(--gray); font-size:12px; text-decoration: underline; cursor:pointer; }
+  .btn-link { background:none; border:none; color: var(--ink-2); font-size:12.5px; text-decoration: underline; cursor:pointer; }
   .seg-btn {
-    flex: 1; padding: 10px 0; border-radius: 9px; font-weight: 700; font-size: 13.5px; cursor: pointer;
-    border: 1px solid var(--navy-line); background: transparent; color: var(--gray);
+    flex: 1; padding: 11px 0; border-radius: 999px; font-weight: 700; font-size: 13.5px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-2);
   }
-  .seg-btn.active { border-color: var(--orange); background: rgba(244,123,32,0.14); color: var(--orange); }
+  .seg-btn.active { border-color: var(--ink); background: var(--ink); color: #fff; }
   .session-row {
-    background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 12px 14px;
+    background: var(--surface); border: none; border-radius: 16px; padding: 14px 16px;
     display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
   }
-  .session-title { font-size: 13.5px; font-weight: 600; color: #fff; }
-  .session-sub { font-size: 12px; color: var(--gray); margin-top: 2px; }
-  .del-btn { background:none; border:none; color: var(--gray); cursor:pointer; padding: 6px; }
-  .section-label { font-size: 11px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.06em; margin: 22px 0 10px; }
-  .zone-pill { flex:1; background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 10px 8px; text-align:center; }
-  .zone-dot { width: 8px; height: 8px; border-radius: 50%; margin: 0 auto 5px; }
-  .best-row { background: var(--navy-light); border: 1px solid var(--navy-line); border-radius: 12px; padding: 10px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-  .best-label { font-size: 12.5px; color: #e4e9f1; font-weight: 600; }
-  .best-sub { font-size: 11px; color: var(--gray); margin-top: 1px; }
-  .best-value { font-size: 17px; font-weight: 700; color: var(--orange); }
-  .tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--navy-light); border-top: 1px solid var(--navy-line); }
-  .tabbar-inner { max-width: 480px; margin: 0 auto; display: flex; }
-  .tab-btn { flex: 1; background: none; border: none; padding: 12px 0 14px; cursor: pointer; color: var(--gray); display:flex; flex-direction:column; align-items:center; gap:3px; }
-  .tab-btn.active { color: var(--orange); }
-  .toast { position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%); background: var(--orange); color: var(--navy); font-weight:700; font-size:13px; padding: 9px 18px; border-radius: 999px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 50;}
+  .session-title { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+  .session-sub { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+  .del-btn { background:none; border:none; color: var(--ink-2); cursor:pointer; padding: 6px; }
+  /* Section headings are large and plain rather than small grey capitals. */
+  .section-label { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink);
+    text-transform: none; margin: 26px 0 12px; }
+  .zone-pill { flex:1; background: var(--surface); border: none; border-radius: 16px; padding: 12px 8px; text-align:center; }
+  .zone-dot { width: 8px; height: 8px; border-radius: 50%; margin: 0 auto 6px; }
+  .best-row { background: var(--surface); border: none; border-radius: 16px; padding: 12px 16px; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .best-label { font-size: 13.5px; color: var(--ink); font-weight: 700; }
+  .best-sub { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
+  .best-value { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+  /* Floating pill nav, lifted off the bottom edge. */
+  .tabbar { position: fixed; bottom: 0; left: 0; right: 0; padding: 0 16px 18px;
+    background: linear-gradient(to top, var(--bg) 58%, rgba(255,255,255,0)); pointer-events: none; }
+  .tabbar-inner { max-width: 420px; margin: 0 auto; display: flex; background: var(--bg);
+    border-radius: 999px; padding: 6px; pointer-events: auto;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.16), 0 0 0 1px var(--line); }
+  .tab-btn { flex: 1; background: none; border: none; padding: 10px 0; cursor: pointer; color: var(--ink-2);
+    display:flex; flex-direction:column; align-items:center; gap:3px; border-radius: 999px; }
+  .tab-btn.active { color: var(--ink); background: var(--surface); }
+  .toast { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; font-weight:700; font-size:13px; padding: 11px 20px; border-radius: 999px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 50; max-width: 86vw; text-align:center; }
   .toast.show { opacity: 1; }
-  .cal-nav-btn { background:none; border:1px solid var(--navy-line); border-radius:8px; padding:5px 8px; color:#cbd3e0; cursor:pointer; }
+  .cal-nav-btn { background:none; border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--ink); cursor:pointer; }
   .cal-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:4px; text-align:center; }
-  .cal-dow { font-size:10px; color: var(--gray); padding: 2px 0; }
+  .cal-dow { font-size:10.5px; color: var(--ink-2); padding: 2px 0; }
   .cal-cell { display:flex; align-items:center; justify-content:center; padding:2px 0; }
-  .cal-day { width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:#cbd3e0; }
-  .cal-day.practiced { background: var(--orange); color: var(--navy); font-weight:600; }
+  .cal-day { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--ink); }
+  .cal-day.practiced { background: var(--ink); color: #fff; font-weight:700; }
   .cal-day.today:not(.practiced) { border: 1.5px solid var(--orange); font-weight:700; }
-  .insight-card { display:flex; gap:12px; align-items:flex-start; padding:14px; border-radius:12px; margin-bottom:18px; border:1px solid var(--navy-line); background: var(--navy-light); }
-  .insight-card.warning { background: rgba(244,123,32,0.10); border-color: var(--orange); }
-  .insight-card.positive { background: rgba(95,208,165,0.10); border-color: var(--green); }
-  .insight-title { font-size: 10.5px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-  .insight-text { font-size: 13px; color: #e4e9f1; line-height: 1.45; }
-  .chart-title { font-size: 12px; color: #cbd3e0; font-weight: 600; padding: 0 4px 10px; }
-  .empty-box { padding: 24px; text-align: center; margin-bottom: 14px; }
-  .footer-note { text-align:center; color: var(--gray); font-size: 11px; padding: 24px 20px 4px; line-height:1.5; }
-  .trend-row { display:flex; justify-content:space-between; align-items:center; padding: 8px 0; border-bottom: 1px solid var(--navy-line); }
+  .insight-card { display:flex; gap:12px; align-items:flex-start; padding:18px; border-radius:18px; margin-bottom:14px; border:none; background: var(--surface); }
+  .insight-card.warning { background: var(--surface); }
+  .insight-card.positive { background: var(--surface); }
+  .insight-title { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; font-weight: 600; }
+  .insight-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+  .chart-title { font-size: 17px; color: var(--ink); font-weight: 800; letter-spacing: -0.02em; padding: 0 4px 8px; }
+  .empty-box { padding: 28px; text-align: center; margin-bottom: 14px; }
+  .footer-note { text-align:center; color: var(--ink-2); font-size: 11.5px; padding: 24px 20px 4px; line-height:1.5; }
+  .trend-row { display:flex; justify-content:space-between; align-items:center; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .trend-row:last-child { border-bottom: none; }
-  .trend-label { font-size: 13px; color: #e4e9f1; font-weight: 600; }
-  .trend-value { font-size: 15px; color: #fff; font-weight: 700; }
-  .trend-delta { font-size: 11.5px; font-weight: 700; margin-left: 6px; }
+  .trend-label { font-size: 13.5px; color: var(--ink); font-weight: 600; }
+  .trend-value { font-size: 17px; color: var(--ink); font-weight: 800; letter-spacing: -0.02em; }
+  .trend-delta { font-size: 12px; font-weight: 700; margin-left: 8px; }
   .trend-delta.up { color: var(--green); }
-  .trend-delta.down { color: #ff8a8a; }
-  .trend-delta.flat { color: var(--gray); }
-  .reminder-banner { display:flex; gap:12px; align-items:flex-start; padding:14px; border-radius:12px; margin-bottom:14px; border:1px solid var(--orange); background: rgba(244,123,32,0.10); }
-  .reminder-banner.ontrack { border-color: var(--green); background: rgba(95,208,165,0.10); }
-  .reminder-title { font-size: 10.5px; color: var(--gray); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-  .reminder-text { font-size: 13px; color: #e4e9f1; line-height: 1.45; }
-  .reminder-toggle { font-size: 11px; color: var(--gray); text-decoration: underline; background:none; border:none; cursor:pointer; margin-top: 8px; padding: 0; }
-  .install-banner { margin: 0 20px 14px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--navy-line); background: var(--navy-light); display:flex; gap:10px; align-items:flex-start; }
-  .install-banner-text { font-size: 12.5px; color: #cbd3e0; line-height:1.5; flex:1; }
-  .install-banner-close { background:none; border:none; color: var(--gray); cursor:pointer; padding:2px; }
-  .import-card { border: 1.5px dashed var(--navy-line); border-radius: 12px; padding: 16px; text-align: center; margin-bottom: 18px; }
-  .import-status { font-size: 12px; color: var(--gray); margin-top: 8px; min-height: 16px; }
-  .input.ocr-read { border-color: var(--green); box-shadow: inset 0 0 0 1px rgba(95,208,165,0.25); }
-  .input.ocr-derived { border-color: #d9a441; box-shadow: inset 0 0 0 1px rgba(217,164,65,0.25); }
+  .trend-delta.down { color: var(--red); }
+  .trend-delta.flat { color: var(--ink-2); }
+  .reminder-banner { display:flex; gap:12px; align-items:flex-start; padding:16px; border-radius:18px; margin-bottom:12px; border:none; background: var(--surface); }
+  .reminder-banner.ontrack { background: var(--surface); }
+  .reminder-banner.alert { background: #fdeceb; box-shadow: inset 3px 0 0 var(--red); }
+  .reminder-title { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; font-weight: 600; }
+  .reminder-text { font-size: 14px; color: var(--ink); line-height: 1.5; }
+  .reminder-toggle { font-size: 12px; color: var(--ink); text-decoration: underline; background:none; border:none; cursor:pointer; margin-top: 10px; padding: 0; }
+  .install-banner { margin: 0 20px 14px; padding: 14px 16px; border-radius: 16px; border: none; background: var(--surface); display:flex; gap:10px; align-items:flex-start; }
+  .install-banner-text { font-size: 13px; color: var(--ink); line-height:1.5; flex:1; }
+  .install-banner-close { background:none; border:none; color: var(--ink-2); cursor:pointer; padding:2px; }
+  .import-card { border: 1.5px dashed var(--line); border-radius: 18px; padding: 20px; text-align: center; margin-bottom: 18px; }
+  .import-status { font-size: 12.5px; color: var(--ink-2); margin-top: 8px; min-height: 16px; }
+  .input.ocr-read { border-color: var(--green); box-shadow: inset 0 0 0 1px rgba(31,157,99,0.25); }
+  .input.ocr-derived { border-color: #b8860b; box-shadow: inset 0 0 0 1px rgba(184,134,11,0.25); }
   .field-tag { font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; vertical-align: 1px; }
-  .field-tag.read { background: rgba(95,208,165,0.18); color: var(--green); }
-  .field-tag.derived { background: rgba(217,164,65,0.18); color: #d9a441; }
-  .ocr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--gray); margin-bottom:14px; padding: 10px 12px; background: var(--navy-light); border:1px solid var(--navy-line); border-radius:10px; }
+  .field-tag.read { background: rgba(31,157,99,0.16); color: var(--green); }
+  .field-tag.derived { background: rgba(184,134,11,0.16); color: #8a6508; }
+  .ocr-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-2); margin-bottom:14px; padding: 12px 14px; background: var(--surface); border:none; border-radius:14px; }
   .ocr-legend span { display:inline-flex; align-items:center; gap:5px; }
-  .badge-chip { display:inline-flex; align-items:center; gap:6px; background:var(--navy-light); border:1px solid var(--navy-line); border-radius:999px; padding:5px 11px; font-size:11.5px; color:#e4e9f1; margin:0 6px 6px 0; }
-  .badge-grade { font-weight:800; font-size:11px; color:var(--navy); background:var(--orange); border-radius:4px; padding:1px 5px; }
-  .badge-zone { font-size:9.5px; color:var(--gray); text-transform:uppercase; letter-spacing:0.04em; }
+  .badge-chip { display:inline-flex; align-items:center; gap:6px; background:var(--surface); border:none; border-radius:999px; padding:7px 13px; font-size:12px; color:var(--ink); margin:0 6px 6px 0; }
+  .badge-grade { font-weight:800; font-size:11px; color:#fff; background:var(--ink); border-radius:5px; padding:1px 6px; }
+  .badge-zone { font-size:9.5px; color:var(--ink-2); text-transform:uppercase; letter-spacing:0.04em; }
   .legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; }
-  .spin { display:inline-block; width:12px; height:12px; border: 2px solid var(--navy-line); border-top-color: var(--orange); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  .spin { display:inline-block; width:12px; height:12px; border: 2px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .sync-pill { display:inline-flex; align-items:center; gap:5px; font-size:11px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--navy-line); color: var(--gray); }
+  .sync-pill { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
   .sync-pill.synced { border-color: var(--green); color: var(--green); }
   .sync-pill.error { border-color: var(--orange); color: var(--orange); }
   .sync-dot { width:6px; height:6px; border-radius:50%; background: currentColor; }
@@ -1478,7 +1505,7 @@ function render() {
     <div style="padding:28px 20px 18px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div>
-          <div class="h-brand" style="font-size:30px;line-height:1;color:#fff">ELLA<span class="slash"></span>TRACKER</div>
+          <div class="h-brand" style="font-size:34px;line-height:1;color:var(--ink)">ELLA<span class="slash"></span>TRACKER</div>
           <div style="font-size:12.5px;color:var(--gray);margin-top:6px;letter-spacing:0.03em;text-transform:uppercase">Same Standards. Relentless Growth.</div>
         </div>
         <span class="sync-pill ${syncPillClass}">${syncDot}${syncPillText}</span>
@@ -1565,7 +1592,7 @@ function renderDashboard() {
     return `
       <div style="padding:0 20px">
         <div class="card empty-box">
-          <div style="font-size:15px;color:#cbd3e0;margin-bottom:14px">No sessions logged yet.</div>
+          <div style="font-size:15px;color:var(--ink-2);margin-bottom:14px">No sessions logged yet.</div>
           <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
             <button class="btn-primary" onclick="setTab('log')">+ Log first session</button>
             <button class="btn-ghost" onclick="loadDemo()">Load demo month</button>
@@ -1582,11 +1609,18 @@ function renderDashboard() {
 
   let html = `<div style="padding:0 20px">`;
 
-  html += `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-    <div class="stat-card"><div style="margin-bottom:6px">${flame}</div><div class="stat-value">${d.dayStreak}<span class="stat-suffix">${d.dayStreak === 1 ? " day" : " days"}</span></div><div class="stat-label">Day Streak</div></div>
-    <div class="stat-card"><div style="margin-bottom:6px">${flame}</div><div class="stat-value">${d.weekStreak}<span class="stat-suffix">${d.weekStreak === 1 ? "wk" : "wks"}</span></div><div class="stat-label">Week Streak</div></div>
-    <div class="stat-card"><div style="margin-bottom:6px">${target}</div><div class="stat-value">${d.pctSpread ? d.pctSpread.latest : (d.overallPct !== null ? d.overallPct : "—")}<span class="stat-suffix">${d.pctSpread || d.overallPct !== null ? "%" : ""}</span></div><div class="stat-label">${d.pctSpread ? `Last session · career ${d.overallPct}%` : "Career FG%"}</div></div>
-    <div class="stat-card"><div style="margin-bottom:6px">${zap}</div><div class="stat-value">${d.totalPoints}</div><div class="stat-label">Dribble Pts</div></div>
+  const heroPct = d.pctSpread ? d.pctSpread.latest : d.overallPct;
+  const totalShots = d.shootingSessions.reduce((a, s) => a + s.attempts, 0);
+  html += `<div class="hero">
+    <div class="hero-value">${heroPct !== null && heroPct !== undefined ? heroPct : "—"}<span class="hero-suffix">%</span></div>
+    <div class="hero-label">${d.pctSpread ? "Last session FG%" : "Career FG%"}</div>
+    ${d.pctSpread ? `<div class="hero-sub">Career ${d.overallPct}% · ${d.pctSpread.min}–${d.pctSpread.max}% across ${d.pctSpread.count} sessions</div>` : ""}
+    <div class="hero-row">
+      <div class="hero-stat"><div class="hero-stat-v">${d.shootingSessions.length}</div><div class="hero-stat-l">Sessions</div></div>
+      <div class="hero-stat"><div class="hero-stat-v">${totalShots}</div><div class="hero-stat-l">Shots</div></div>
+      <div class="hero-stat"><div class="hero-stat-v">${d.dayStreak}<span class="stat-suffix">d</span></div><div class="hero-stat-l">Streak</div></div>
+      ${d.dribblingSessions.length ? `<div class="hero-stat"><div class="hero-stat-v">${d.totalPoints}</div><div class="hero-stat-l">Dribble Pts</div></div>` : ""}
+    </div>
   </div>`;
 
   if (d.duplicates.length) {
@@ -1595,10 +1629,10 @@ function renderDashboard() {
       return `${g.count} sessions on ${fmtShort(g.date)} both logged ${g.attempts} attempts${when ? ` (${when})` : ""}`;
     }).join("; ");
     const conflicting = d.duplicates.some((g) => g.conflicting);
-    html += `<div class="reminder-banner" style="border-color:#ff8a8a">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff8a8a" stroke-width="2" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    html += `<div class="reminder-banner alert">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" style="flex-shrink:0;margin-top:2px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
       <div style="flex:1">
-        <div class="reminder-title" style="color:#ff8a8a">Possible duplicate</div>
+        <div class="reminder-title" style="color:var(--red)">Possible duplicate</div>
         <div class="reminder-text">${dupText}. ${conflicting ? "The two readings disagree, so the totals above are counting one workout twice with conflicting numbers." : "That looks like one workout logged twice."} Check the session log below and delete whichever is wrong.</div>
       </div>
     </div>`;
@@ -1631,18 +1665,18 @@ function renderDashboard() {
         <button class="btn-link" style="font-size:10.5px" ${state.coachLoading ? "disabled" : ""} onclick="refreshCoachNote(true)">${state.coachLoading ? "Analyzing…" : "Refresh"}</button>
       </div>
       <div class="insight-text" style="margin-bottom:10px">${note.summary}</div>
-      ${note.progress ? `<div style="font-size:12.5px;color:#cbd3e0;line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Since last note</strong>${note.progress}</div>` : ""}
-      ${note.focus ? `<div style="font-size:12.5px;color:#ffd9b3;background:rgba(244,123,32,0.10);border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${note.focus}</div>` : ""}
+      ${note.progress ? `<div style="font-size:12.5px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Since last note</strong>${note.progress}</div>` : ""}
+      ${note.focus ? `<div style="font-size:12.5px;color:var(--ink);background:#fdf1e6;border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${note.focus}</div>` : ""}
       ${Array.isArray(note.plan) && note.plan.length ? `<div style="width:100%;margin-bottom:10px">
         <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Next practice</div>
-        ${note.plan.map((p) => `<div style="font-size:12.5px;color:#e4e9f1;line-height:1.45;margin-bottom:7px;padding-left:10px;border-left:2px solid var(--navy-line)"><strong>${p.drill}</strong> — ${p.target}${p.why ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-top:2px">${p.why}</div>` : ""}</div>`).join("")}
+        ${note.plan.map((p) => `<div style="font-size:12.5px;color:var(--ink);line-height:1.45;margin-bottom:7px;padding-left:10px;border-left:2px solid var(--navy-line)"><strong>${p.drill}</strong> — ${p.target}${p.why ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-top:2px">${p.why}</div>` : ""}</div>`).join("")}
       </div>` : ""}
       ${note.dataGaps ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.45;margin-bottom:10px"><strong>Worth checking:</strong> ${note.dataGaps}</div>` : ""}
-      ${note.benchmarks ? `<div style="font-size:12px;color:#cbd3e0;line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${note.benchmarks}</div>` : ""}
+      ${note.benchmarks ? `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${note.benchmarks}</div>` : ""}
       ${note.goals && (note.goals.shots || note.goals.dribbleMinutes) ? `
         <div style="width:100%;border-top:1px solid var(--navy-line);padding-top:10px">
           <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Suggested next week</div>
-          <div style="font-size:12.5px;color:#e4e9f1;margin-bottom:3px">${note.goals.shots || state.goals.shots} shots · ${note.goals.dribbleMinutes || state.goals.dribbleMinutes} DribbleUp min</div>
+          <div style="font-size:12.5px;color:var(--ink);margin-bottom:3px">${note.goals.shots || state.goals.shots} shots · ${note.goals.dribbleMinutes || state.goals.dribbleMinutes} DribbleUp min</div>
           ${note.goals.rationale ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-bottom:8px">${note.goals.rationale}</div>` : ""}
           <button class="btn-ghost" style="padding:7px 13px;font-size:11.5px" onclick="applySuggestedGoals()">Use these goals</button>
         </div>` : ""}
@@ -1677,7 +1711,7 @@ function renderDashboard() {
     <div style="font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Weekly Goals</div>
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-        <span style="font-size:13px;color:#e4e9f1;font-weight:600">Shots</span>
+        <span style="font-size:13px;color:var(--ink);font-weight:600">Shots</span>
         <span style="font-size:12.5px;color:${shotsMet ? "var(--green)" : "var(--gray)"}">${d.thisWeek.attempts} / <input class="input" id="f-goal-shots" type="number" min="1" value="${state.goals.shots}" oninput="updateGoal('shots', this.value)" style="display:inline-block;width:56px;padding:2px 6px;font-size:12.5px;text-align:center" /></span>
       </div>
       <div style="height:8px;border-radius:99px;background:var(--navy-line);overflow:hidden">
@@ -1686,7 +1720,7 @@ function renderDashboard() {
     </div>
     <div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-        <span style="font-size:13px;color:#e4e9f1;font-weight:600">DribbleUp minutes</span>
+        <span style="font-size:13px;color:var(--ink);font-weight:600">DribbleUp minutes</span>
         <span style="font-size:12.5px;color:${dribbleMet ? "var(--green)" : "var(--gray)"}">${d.thisWeek.dribbleMin} / <input class="input" id="f-goal-dribbleMinutes" type="number" min="1" value="${state.goals.dribbleMinutes}" oninput="updateGoal('dribbleMinutes', this.value)" style="display:inline-block;width:56px;padding:2px 6px;font-size:12.5px;text-align:center" /> min</span>
       </div>
       <div style="height:8px;border-radius:99px;background:var(--navy-line);overflow:hidden">
@@ -1697,21 +1731,30 @@ function renderDashboard() {
 
   const prevWeekKey = addDays(getMonday(todayStr()), -7);
   const prevWeek = d.weekly.find((w) => w.week === prevWeekKey) || { attempts: 0, makes: 0, points: 0, reps: 0, dribbleMin: 0, shootingPct: null };
-  html += `<div class="card">
-    <div class="section-label" style="margin:0 0 10px">This Week vs Last Week</div>
-    ${trendRow("FG%", d.thisWeek.shootingPct !== null ? `${d.thisWeek.shootingPct}%` : "—", d.thisWeek.shootingPct, prevWeek.shootingPct, "pp")}
-    ${trendRow("Shots", d.thisWeek.attempts, d.thisWeek.attempts, prevWeek.attempts, "")}
-    ${trendRow("Dribble Pts", d.thisWeek.points, d.thisWeek.points, prevWeek.points, "")}
-    ${trendRow("DribbleUp Min", d.thisWeek.dribbleMin, d.thisWeek.dribbleMin, prevWeek.dribbleMin, "")}
-  </div>`;
+  const hasDribbling = d.dribblingSessions.length > 0;
+  const dribbleRows = (cur, prev) => hasDribbling
+    ? trendRow("Dribble Pts", cur.points, cur.points, prev.points, "") +
+      trendRow("DribbleUp Min", cur.dribbleMin, cur.dribbleMin, prev.dribbleMin, "")
+    : "";
+  const periodHasData = (p) => (p.attempts || 0) > 0 || (p.points || 0) > 0 || (p.dribbleMin || 0) > 0;
 
-  html += `<div class="card">
-    <div class="section-label" style="margin:0 0 10px">${fmtMonthLabel(d.thisMonthKey)} vs Last Month</div>
-    ${trendRow("FG%", d.thisMonth.shootingPct !== null ? `${d.thisMonth.shootingPct}%` : "—", d.thisMonth.shootingPct, d.lastMonth.shootingPct, "pp")}
-    ${trendRow("Shots", d.thisMonth.attempts, d.thisMonth.attempts, d.lastMonth.attempts, "")}
-    ${trendRow("Dribble Pts", d.thisMonth.points, d.thisMonth.points, d.lastMonth.points, "")}
-    ${trendRow("DribbleUp Min", d.thisMonth.dribbleMin, d.thisMonth.dribbleMin, d.lastMonth.dribbleMin, "")}
-  </div>`;
+  if (periodHasData(d.thisWeek) && periodHasData(prevWeek)) {
+    html += `<div class="card">
+      <div class="section-label" style="margin:0 0 10px">This Week vs Last Week</div>
+      ${trendRow("FG%", d.thisWeek.shootingPct !== null ? `${d.thisWeek.shootingPct}%` : "—", d.thisWeek.shootingPct, prevWeek.shootingPct, "pp")}
+      ${trendRow("Shots", d.thisWeek.attempts, d.thisWeek.attempts, prevWeek.attempts, "")}
+      ${dribbleRows(d.thisWeek, prevWeek)}
+    </div>`;
+  }
+
+  if (periodHasData(d.thisMonth) && periodHasData(d.lastMonth)) {
+    html += `<div class="card">
+      <div class="section-label" style="margin:0 0 10px">${fmtMonthLabel(d.thisMonthKey)} vs Last Month</div>
+      ${trendRow("FG%", d.thisMonth.shootingPct !== null ? `${d.thisMonth.shootingPct}%` : "—", d.thisMonth.shootingPct, d.lastMonth.shootingPct, "pp")}
+      ${trendRow("Shots", d.thisMonth.attempts, d.thisMonth.attempts, d.lastMonth.attempts, "")}
+      ${dribbleRows(d.thisMonth, d.lastMonth)}
+    </div>`;
+  }
 
   if (d.pctSpread && d.pctSpread.count >= 2) {
     html += `<div class="card" style="padding:14px 8px 6px">
@@ -1773,7 +1816,7 @@ function renderDashboard() {
       const barPct = z.pct !== null ? Math.min(100, z.pct) : 0;
       html += `<div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
-          <span style="font-size:12.5px;color:#e4e9f1;font-weight:600">${z.label}</span>
+          <span style="font-size:12.5px;color:var(--ink);font-weight:600">${z.label}</span>
           <span style="font-size:12px;color:var(--gray)">${z.makes}/${z.attempts} · <strong style="color:#fff">${z.pct}%</strong>${z.swishes > 0 ? ` · ${z.swishPct}% swish` : ""}</span>
         </div>
         <div style="height:7px;border-radius:99px;background:var(--navy-line);overflow:hidden">
@@ -1815,7 +1858,7 @@ function renderDashboard() {
           <span class="trend-label">Shot form</span>
           <span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">consistent in ${d.formCounts.Consistent} of ${total} session${total === 1 ? "" : "s"} (${consistentPct}%)</span>
         </span>
-        <span class="trend-value" style="color:${(d.latestForm.shotForm || "").toLowerCase() === "consistent" ? "var(--green)" : "#ff8a8a"}">${d.latestForm.shotForm}</span>
+        <span class="trend-value" style="color:${(d.latestForm.shotForm || "").toLowerCase() === "consistent" ? "var(--green)" : "var(--red)"}">${d.latestForm.shotForm}</span>
       </div>`;
     }
     html += `</div>`;
@@ -2198,7 +2241,7 @@ function renderLogForm() {
 
   if (state.editingId) {
     html += `<div style="background:rgba(95,208,165,0.10);border:1px solid var(--green);border-radius:10px;padding:11px 13px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:10px">
-      <span style="font-size:12.5px;color:#d7f5e9">Editing an existing session</span>
+      <span style="font-size:12.5px;color:var(--green)">Editing an existing session</span>
       <button class="btn-ghost" style="padding:6px 12px;font-size:11.5px" onclick="cancelEdit()">Cancel</button>
     </div>`;
   }
@@ -2211,7 +2254,7 @@ function renderLogForm() {
       <button class="btn-link" style="margin-top:10px" onclick="toggleOcrDebug()">${state.showOcrDebug ? "Hide" : "Show"} raw OCR text (debug)</button>
       ${state.showOcrDebug ? `
         <div style="margin-top:10px;text-align:left">
-          <textarea readonly id="f-ocr-raw" style="width:100%;height:150px;background:#0a1526;border:1px solid var(--navy-line);border-radius:8px;color:#cbd3e0;font-family:monospace;font-size:11px;padding:8px;line-height:1.4">${state.lastOcrRaw.replace(/</g, "&lt;")}</textarea>
+          <textarea readonly id="f-ocr-raw" style="width:100%;height:150px;background:var(--surface);border:1px solid var(--navy-line);border-radius:8px;color:var(--ink-2);font-family:monospace;font-size:11px;padding:8px;line-height:1.4">${state.lastOcrRaw.replace(/</g, "&lt;")}</textarea>
           <button class="btn-ghost" style="margin-top:8px;width:100%;padding:8px" onclick="copyOcrRaw()">Copy raw text</button>
         </div>` : ""}
     ` : ""}
@@ -2237,7 +2280,7 @@ function renderLogForm() {
       </div>`;
     }
     if (s._ocrLowConfidence || s._ocrSwapped) {
-      html += `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:#ffd9b3;line-height:1.5">
+      html += `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;color:var(--ink);line-height:1.5">
         ⚠️ ${s._ocrSwapped ? "Attempts/Makes looked swapped and were auto-corrected." : "Couldn't clearly read all 3 numbers (Attempts/Makes/Swishes) from the screenshot."} Please check these against the actual screenshot before saving.
       </div>`;
     }
@@ -2254,12 +2297,12 @@ function renderLogForm() {
     html += `<div class="field">
       <label>Shots by distance ${ocrTag(s, "closeAttempts")}</label>
       <div style="font-size:10.5px;color:var(--gray);margin:-2px 0 8px">Attempts / makes / swishes per zone. Import the "Shots by distance" popup to fill automatically.</div>
-      ${s._zoneGuess ? `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;color:#ffd9b3;line-height:1.45">
+      ${s._zoneGuess ? `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;color:var(--ink);line-height:1.45">
         ⚠️ Close vs Mid can't be told apart from the screenshot text — check them against the popup.
         <button type="button" onclick="swapCloseMid()" style="display:block;margin-top:7px;background:var(--orange);color:var(--navy);border:none;border-radius:7px;padding:6px 12px;font-weight:700;font-size:11.5px;cursor:pointer">⇅ Swap Close / Mid</button>
       </div>` : ""}
       ${s._zoneMakesCheck === "ok" ? `<div style="font-size:11px;color:var(--green);margin-bottom:9px">✓ Zone makes add up to the session total — pairing looks right.</div>` : ""}
-      ${s._zoneMakesCheck === "mismatch" ? `<div style="font-size:11px;color:#ff8a8a;margin-bottom:9px">⚠️ Zone makes don't match the session total — please verify.</div>` : ""}
+      ${s._zoneMakesCheck === "mismatch" ? `<div style="font-size:11px;color:var(--red);margin-bottom:9px">⚠️ Zone makes don't match the session total — please verify.</div>` : ""}
       ${["close", "mid", "long"].map((z) => {
         const name = z === "close" ? "Close" : z === "mid" ? "Mid" : "Long";
         return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
@@ -2295,7 +2338,7 @@ function renderLogForm() {
     html += fieldHtml("Duration (min)", `<input class="input" id="f-dribbling-duration" type="number" min="0" value="${dr.duration}" oninput="updateDribbling('duration', this.value)" />`);
   }
 
-  if (state.error) html += `<div style="color:#ff8a8a;font-size:12.5px;margin-bottom:10px">${state.error}</div>`;
+  if (state.error) html += `<div style="color:var(--red);font-size:12.5px;margin-bottom:10px">${state.error}</div>`;
   html += `<button class="btn-primary" style="width:100%;margin-top:6px" onclick="handleAdd()">${state.editingId ? "Save Changes" : "Log Session"}</button>`;
   html += `</div>`;
   return html;
@@ -2304,7 +2347,7 @@ function renderLogForm() {
 /* ---------- charts ---------- */
 function drawCharts() {
   const d = computeDerived();
-  const gray = "#8a96a8", navyLine = "#233a56", orange = "#f47b20", navyLightBar = "#233a56";
+  const gray = "#6b6b6b", navyLine = "#e4e4e4", orange = "#f47b20", navyLightBar = "#d8d8d8";
   Chart.defaults.font.family = "'Inter', sans-serif";
 
   if (document.getElementById("chartFg")) {
@@ -2335,12 +2378,12 @@ function drawCharts() {
   }
   if (document.getElementById("chartZoneSession")) {
     destroyChart("zoneSession");
-    // One step darker than the app's blue/orange so both sit inside the
-    // dark-surface lightness band; checked with the palette validator.
+    // Picked against the light card surface and checked with the palette
+    // validator: in band, and separable under every simulated CVD type.
     const zoneSeries = [
-      { key: "close", label: "Close", color: "#4f8fc9" },
-      { key: "mid", label: "Mid", color: "#dd6f14" },
-      { key: "long", label: "Long", color: "#3f9e78" },
+      { key: "close", label: "Close", color: "#2f6fb5" },
+      { key: "mid", label: "Mid", color: "#e06c0a" },
+      { key: "long", label: "Long", color: "#1f7a52" },
     ].filter((z) => d.zoneStats.find((s) => s.zone === z.key && s.attempts >= 5));
     charts.zoneSession = new Chart(document.getElementById("chartZoneSession"), {
       type: "line",
@@ -2376,9 +2419,9 @@ function drawCharts() {
     charts.zones = new Chart(document.getElementById("chartZones"), {
       type: "bar",
       data: { labels: d.weekly.map((w) => w.label), datasets: [
-        { label: "Close", data: d.weekly.map((w) => w.close), backgroundColor: "#5b9bd5" },
+        { label: "Close", data: d.weekly.map((w) => w.close), backgroundColor: "#2f6fb5" },
         { label: "Mid", data: d.weekly.map((w) => w.mid), backgroundColor: orange },
-        { label: "Long", data: d.weekly.map((w) => w.long), backgroundColor: "#5fd0a5" }
+        { label: "Long", data: d.weekly.map((w) => w.long), backgroundColor: "#1f7a52" }
       ] },
       options: { responsive: true, plugins: { legend: { labels: { color: gray, font: { size: 11 } } } }, scales: {
         x: { stacked: true, ticks: { color: gray, font: { size: 10 } }, grid: { display: false } },
