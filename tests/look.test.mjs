@@ -62,6 +62,53 @@ async function open({ offline=false, empty=false } = {}) {
   await p.screenshot({path: P(".build/new-log.png"), clip:{x:0,y:0,width:430,height:900}});
   await ctx.close();
 }
+// --- Every field must be visible against whatever is behind it -------------
+{
+  const { p, ctx } = await open();
+  const invisible = await p.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll(".input")) {
+      const cs = getComputedStyle(el);
+      let par = el.parentElement, behind = "rgb(255, 255, 255)";
+      while (par) { const c = getComputedStyle(par).backgroundColor;
+        if (c && !/rgba\(0, 0, 0, 0\)/.test(c)) { behind = c; break; } par = par.parentElement; }
+      const borderInvisible = /rgba\(0, 0, 0, 0\)/.test(cs.borderColor) || cs.borderStyle === "none";
+      if (cs.backgroundColor === behind && borderInvisible) out.push(el.id || el.tagName);
+    }
+    return out;
+  });
+  check("no field is the same colour as its container with no border", invisible.length === 0, invisible);
+  await ctx.close();
+}
+{
+  const { p, ctx } = await open();
+  await p.locator("text=Log Session").click(); await p.waitForTimeout(600);
+  const invisible = await p.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll(".input")) {
+      const cs = getComputedStyle(el);
+      let par = el.parentElement, behind = "rgb(255, 255, 255)";
+      while (par) { const c = getComputedStyle(par).backgroundColor;
+        if (c && !/rgba\(0, 0, 0, 0\)/.test(c)) { behind = c; break; } par = par.parentElement; }
+      const borderInvisible = /rgba\(0, 0, 0, 0\)/.test(cs.borderColor) || cs.borderStyle === "none";
+      if (cs.backgroundColor === behind && borderInvisible) out.push(el.id || el.tagName);
+    }
+    return out;
+  });
+  check("log form: no invisible fields either", invisible.length === 0, invisible);
+  await ctx.close();
+}
+// --- Nothing that can only ever read empty ---------------------------------
+{
+  const { p, ctx } = await open();
+  const t = await p.locator("#app").innerText();
+  check("no DribbleUp goal bar without dribbling data", !t.includes("DribbleUp minutes"));
+  check("Weekly Goals heads like every other section", await p.evaluate(() => {
+    const h = [...document.querySelectorAll(".section-label")].find(e => /Weekly Goals/i.test(e.textContent));
+    return !!h && parseFloat(getComputedStyle(h).fontSize) >= 20;
+  }));
+  await ctx.close();
+}
 // --- Empty state -----------------------------------------------------------
 {
   const { p, ctx, errs } = await open({ empty:true });
