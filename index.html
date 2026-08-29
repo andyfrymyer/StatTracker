@@ -1548,7 +1548,7 @@ window.printRecap = function () {
           shaky ? " — reading unreliable" : (m.priorAvg !== null ? ` (prev avg ${m.priorAvg}%)` : "")
         }</strong></div>`;
       }).join("")}
-      ${d.suspectMechanics.length ? `<div class="rp-caveat">${esc(d.suspectMechanics.join(" and "))} never rose above 1% in any session. That is more often a capture problem than a real result — worth checking before coaching to it.</div>` : ""}
+      ${d.suspectMechanics.length ? `<div class="rp-caveat">${esc(d.suspectMechanics.join(" and "))} never rose above 1% in any session. That is more often a capture problem than a real result — worth checking against the shootaround summary screen before coaching to it.</div>` : ""}
       ${d.latestForm ? `<div class="rp-row"><span>Shot form</span><strong>${esc(d.latestForm.shotForm)}</strong></div>` : ""}
     </div>` : ""}
     <div class="rp-section">
@@ -1736,7 +1736,8 @@ function computeDerived() {
   const lastMonth = monthlyList.find((m) => m.month === lastMonthKey) || { attempts: 0, makes: 0, points: 0, reps: 0, dribbleMin: 0, shootingPct: null };
 
   // --- Shot mechanics (spin rate, release time, shot arc, intensity) ---
-  // These come from the DribbleUp screen but weren't surfaced anywhere before.
+  // These come from DribbleUp's shootaround summary — shooting metrics, not
+  // anything to do with the dribbling drills — and were not surfaced anywhere.
   // Show the latest value plus how it compares to the average of prior sessions.
   const mechKeys = ["spinRate", "releaseTime", "shotArc", "intensity"];
   const mechLabels = { spinRate: "Spin rate", releaseTime: "Release time", shotArc: "Shot arc", intensity: "Intensity" };
@@ -2166,7 +2167,7 @@ function renderDashboard() {
         <div style="border-top:1px solid var(--line);padding-top:18px">
           <div style="font-size:17px;font-weight:800;letter-spacing:-0.02em;color:var(--ink);margin-bottom:10px">What you'll get</div>
           ${[
-            ["Shot a DribbleUp screen?", "Import the screenshot and the numbers fill themselves in — including the shots-by-distance popup."],
+            ["Screenshot a DribbleUp session?", "Import it and the numbers fill themselves in — including the shots-by-distance popup."],
             ["Zone and shot-type splits", "Where the points are actually going: close against mid, relaxed against catch &amp; shoot."],
             ["An AI coach's note", "Reads every session and answers with drills and rep counts, not a paragraph of encouragement."],
           ].map(([t, b]) => `<div style="margin-bottom:14px">
@@ -2432,7 +2433,7 @@ function renderDashboard() {
       if (m.priorAvg !== null) {
         const diff = m.latest - m.priorAvg;
         // Higher is better for spin rate, shot arc, and intensity. Release
-        // time is a "% in range" figure on the DribbleUp screen, so higher
+        // time is a "% in range" figure on the shootaround summary, so higher
         // is better there too.
         if (diff > 0) delta = `<span class="trend-delta up">▲ ${diff}</span>`;
         else if (diff < 0) delta = `<span class="trend-delta down">▼ ${Math.abs(diff)}</span>`;
@@ -2448,7 +2449,7 @@ function renderDashboard() {
     }
     if (d.suspectMechanics.length) {
       html += `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-top:10px">
-        <strong style="color:var(--ink)">Worth checking:</strong> ${d.suspectMechanics.join(" and ")} never rose above 1% in any session logged. That is more often a screenshot the parser could not read than a real result — compare one against the DribbleUp screen before coaching to it.
+        <strong style="color:var(--ink)">Worth checking:</strong> ${d.suspectMechanics.join(" and ")} never rose above 1% in any session logged. That is more often a screenshot the parser could not read than a real result — compare one against the shootaround summary screen in DribbleUp before coaching to it.
       </div>`;
     }
     if (d.latestForm) {
