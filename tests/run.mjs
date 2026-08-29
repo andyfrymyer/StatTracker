@@ -22,7 +22,7 @@ const server = http.createServer((req, res) => {
 
 const SUITES = ["icon.test.mjs", "test.mjs", "hang.mjs", "payload.test.mjs", "dupe.test.mjs", "escape.test.mjs",
                 "render.test.mjs", "real.render.mjs", "swipe.test.mjs", "improve.test.mjs",
-                "look.test.mjs", "notify.test.mjs", "ui.test.mjs", "note-ui.test.mjs", "contrast.mjs"];
+                "look.test.mjs", "notify.test.mjs", "ui.test.mjs", "note-ui.test.mjs", "dialog.test.mjs", "contrast.mjs"];
 // Dates are timezone-sensitive, and UTC alone hides the entire bug class.
 const DATE_ZONES = ["UTC", "America/New_York", "America/Los_Angeles", "Europe/Berlin", "Asia/Tokyo", "Pacific/Auckland"];
 

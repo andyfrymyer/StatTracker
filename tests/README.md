@@ -27,6 +27,7 @@ is already installed, or `TEST_BASE_URL` to serve from somewhere else.
 | `notify.test.mjs` | The four notification-permission outcomes, including an iPhone in a Safari tab |
 | `ui.test.mjs` | Calendar dates leading into the log, the shot-form chip, and the toast states |
 | `note-ui.test.mjs` | The refresh button, the loading skeleton, and the import leading the log form |
+| `dialog.test.mjs` | The PIN gate and destructive confirms, and that nothing falls back to prompt/confirm |
 | `contrast.mjs` | Every rendered text node against its effective background, at WCAG AA |
 
 ## Notes
