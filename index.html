@@ -876,14 +876,22 @@ window.enableReminders = function () {
     showToast("This browser doesn't support notifications.");
     return;
   }
+  if (isIOS() && !isStandalone()) {
+    showToast("On iPhone this needs the app on your Home Screen: tap Share, then Add to Home Screen, and enable reminders from there.", 7000);
+    return;
+  }
   Notification.requestPermission().then((perm) => {
     state.remindersEnabled = perm === "granted";
     try { localStorage.setItem(REMINDERS_KEY, state.remindersEnabled ? "1" : "0"); } catch (e) {}
     if (state.remindersEnabled) {
       showToast("Reminders on");
       maybeNotify(true);
+    } else if (perm === "denied") {
+      // Genuinely blocked: the browser will not ask again from a tap.
+      showToast("This site is blocked from sending notifications. Allow it in your browser's settings for this site, then try again.", 6500);
     } else {
-      showToast("Notifications blocked — check browser settings");
+      // Dismissed rather than refused, so asking again will work.
+      showToast("Not allowed yet — tap again and choose Allow.", 5000);
     }
     render();
   });
@@ -906,7 +914,15 @@ function maybeNotify(force) {
   const parts = [];
   if (pace.shotsBehind > 0) parts.push(`${pace.shotsBehind} shots`);
   if (pace.dribbleBehind > 0) parts.push(`${pace.dribbleBehind} DribbleUp min`);
-  new Notification("ShootingIQ", { body: `Behind pace this week: ${parts.join(" · ")} to stay on track.` });
+  // Not every platform allows the Notification constructor even after granting
+  // permission — iOS wants ServiceWorkerRegistration.showNotification. A throw
+  // here used to abort the caller before it could re-render.
+  try {
+    new Notification("ShootingIQ", { body: `Behind pace this week: ${parts.join(" · ")} to stay on track.` });
+  } catch (e) {
+    console.warn("Could not post a notification", e);
+    return;
+  }
   try { localStorage.setItem(LAST_NOTIFIED_KEY, today); } catch (e) {}
 }
 
@@ -1954,7 +1970,9 @@ function renderDashboard() {
       <div class="reminder-text">${paceText}</div>
       ${state.remindersEnabled
         ? `<button class="reminder-toggle" onclick="disableReminders()">Turn off notifications</button>`
-        : `<button class="reminder-toggle" onclick="enableReminders()">Enable browser notifications</button>`}
+        : `<button class="reminder-toggle" onclick="enableReminders()">${
+            isIOS() && !isStandalone() ? "Add to Home Screen to get reminders" : "Enable browser notifications"
+          }</button>`}
     </div>
   </div>`;
 
