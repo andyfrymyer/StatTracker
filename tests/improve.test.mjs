@@ -101,9 +101,13 @@ async function open({ offline=false, prefs=null } = {}) {
 
 // --- 4. Prefs arrive from the server ---------------------------------------
 {
-  const { p, ctx } = await open({ prefs: { profile:"14U combo guard, plays up", coachNote:{ summary:"From the server.", focus:"Mid-range", sessionCount:4 } } });
+  // A synced note is now shaped around what to do, not a summary to read.
+  const { p, ctx } = await open({ prefs: { profile:"14U combo guard, plays up", coachNote:{
+    progress:"Long range moved from 1 attempt to 10.",
+    plan:[{drill:"Elbow-to-elbow mid-range",target:"60 attempts",why:"From the server."}],
+    goals:{shots:550,dribbleMinutes:30,rationale:"Slight bump."}, dataGaps:null, sessionCount:4 } } });
   check("profile pulled from the server", (await p.evaluate(()=>state.profile)).includes("plays up"));
-  check("coach note pulled from the server", (await p.evaluate(()=>state.coachNote.summary))==="From the server.");
+  check("coach note pulled from the server", (await p.evaluate(()=>state.coachNote.plan[0].drill))==="Elbow-to-elbow mid-range");
   const t = await p.locator("#app").innerText();
   check("server note is rendered", t.includes("From the server."));
   check("footer reflects that prefs sync", /player context and the coach's note sync/i.test(t));
