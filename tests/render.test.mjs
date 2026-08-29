@@ -12,9 +12,7 @@ const sessions = [
     longAttempts:10, longMakes:2, longSwishes:0, badges:null },
 ];
 const NEW_NOTE = {
-  summary:"She shot 44.4% across 430 attempts.",
   progress:"Last time the ask was long-range reps: she went from 1 attempt to 10.",
-  focus:"Keep extending range.",
   plan:[{drill:"Elbow-to-elbow mid-range",target:"60 attempts, aim for 30+ makes",why:"Mid sits at 41.4%, below close."},
         {drill:"Free-throw-line extended threes",target:"40 attempts, log makes",why:"Only 11 long attempts on record."}],
   goals:{shots:550,dribbleMinutes:35,rationale:"Slight bump on both."},
@@ -61,9 +59,9 @@ async function load({ note, profile, seed = true }) {
   const { ctx, errors, text } = await load({ note: NEW_NOTE, profile: "14U point guard, plays up an age group." });
   const b = await text();
   check("page loads with no JS errors", errors.length === 0, errors.slice(0,3));
-  check("summary renders", b.includes("she shot 44.4% across 430 attempts."));
+  check("no summary paragraph", !b.includes("she shot 44.4%"));
+  check("no focus paragraph", !b.includes("focus next:"));
   check("progress section renders", b.includes("since last note") && b.includes("from 1 attempt to 10"));
-  check("focus renders", b.includes("focus next:") && b.includes("keep extending range."));
   check("plan heading renders", b.includes("next practice"));
   check("plan drill 1 renders", b.includes("elbow-to-elbow mid-range") && b.includes("60 attempts, aim for 30+ makes"));
   check("plan drill 2 renders", b.includes("free-throw-line extended threes"));
@@ -77,8 +75,9 @@ async function load({ note, profile, seed = true }) {
   const { ctx, errors, text } = await load({ note: LEGACY_NOTE, profile: "" });
   const b = await text();
   check("legacy note: no JS errors", errors.length === 0, errors.slice(0,3));
-  check("legacy note: summary renders", b.includes("old-style cached note."));
-  check("legacy note: benchmarks still shown", b.includes("where this sits") && b.includes("no official percentile chart"));
+  check("legacy summary no longer printed", !b.includes("old-style cached note."));
+  // A cached note with nothing actionable in it is no longer worth a card.
+  check("a summary-only cached note falls back to the basic note", !b.includes("where this sits"));
   check("legacy note: no empty 'Next practice'", !b.includes("next practice"));
   check("legacy note: no empty 'Since last note'", !b.includes("since last note"));
   check("legacy note: no empty 'Worth checking'", !b.includes("worth checking"));

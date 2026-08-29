@@ -636,7 +636,7 @@ async function syncFromApi() {
     if (prefs) {
       if (typeof prefs.profile === "string") { state.profile = prefs.profile; persistProfile(); }
       else if (state.profile) { schedulePushPrefs(); } // server has none, seed it from here
-      if (prefs.coachNote && prefs.coachNote.summary) {
+      if (usableNote(prefs.coachNote)) {
         state.coachNote = prefs.coachNote;
         try { localStorage.setItem(COACH_CACHE_KEY, JSON.stringify(state.coachNote)); } catch (e) {}
       } else if (state.coachNote) { schedulePushPrefs(); }
@@ -1066,6 +1066,11 @@ function buildCoachPayload() {
     }),
   };
 }
+// The note used to be judged by whether it had a summary to read. It is judged
+// now by whether it has anything to act on.
+function usableNote(note) {
+  return !!note && ((Array.isArray(note.plan) && note.plan.length > 0) || !!note.progress || !!note.dataGaps);
+}
 // This is the slowest call the app makes, and it gets slower as sessions pile
 // up, because the model reasons over every session before it answers.
 async function postCoachNote(payload) {
@@ -1108,7 +1113,7 @@ window.refreshCoachNote = async function (force) {
   state.coachLoading = true; render();
   try {
     const note = await postCoachNote(buildCoachPayload());
-    if (note && note.summary) {
+    if (usableNote(note)) {
       note.generatedAt = new Date().toISOString();
       note.sessionCount = state.sessions.length;
       state.coachNote = note;
@@ -1371,8 +1376,8 @@ window.printRecap = function () {
       <div class="rp-row"><span>Best single-session FG%</span><strong>${d.bests.bestPct ? d.bests.bestPct.pct + "%" : "—"}</strong></div>
       <div class="rp-row"><span>Most makes in a session</span><strong>${d.bests.mostMakes ? d.bests.mostMakes.makes : "—"}</strong></div>
     </div>
-    ${state.coachNote && state.coachNote.summary ? `
-      <div class="rp-note"><strong>Coach's Note:</strong> ${state.coachNote.summary}${state.coachNote.focus ? ` <strong>Focus next:</strong> ${state.coachNote.focus}` : ""}</div>
+    ${usableNote(state.coachNote) && Array.isArray(state.coachNote.plan) && state.coachNote.plan.length ? `
+      <div class="rp-note"><strong>Next practice:</strong> ${state.coachNote.plan.map((p) => `${esc(p.drill)} — ${esc(p.target)}`).join("; ")}</div>
     ` : `<div class="rp-note"><strong>Coach's Note:</strong> ${d.insight.text}</div>`}
   `;
   window.print();
@@ -1955,15 +1960,13 @@ function renderDashboard() {
 
   const note = state.coachNote;
   const noteStale = note && note.sessionCount !== state.sessions.length;
-  if (note && note.summary) {
+  if (usableNote(note)) {
     html += `<div class="insight-card positive" style="flex-direction:column;gap:0">
       <div style="display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:8px">
         <div class="insight-title" style="margin:0">✨ AI Coach's Note</div>
         <button class="btn-link" style="font-size:10.5px" ${state.coachLoading ? "disabled" : ""} onclick="refreshCoachNote(true)">${state.coachLoading ? "Analyzing…" : "Refresh"}</button>
       </div>
-      <div class="insight-text" style="margin-bottom:10px">${esc(note.summary)}</div>
       ${note.progress ? `<div style="font-size:12.5px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Since last note</strong>${esc(note.progress)}</div>` : ""}
-      ${note.focus ? `<div style="font-size:12.5px;color:var(--ink);background:#fdf1e6;border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${esc(note.focus)}</div>` : ""}
       ${Array.isArray(note.plan) && note.plan.length ? `<div style="width:100%;margin-bottom:10px">
         <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Next practice</div>
         ${note.plan.map((p) => `<div style="font-size:12.5px;color:var(--ink);line-height:1.45;margin-bottom:7px;padding-left:10px;border-left:2px solid var(--navy-line)"><strong>${esc(p.drill)}</strong> — ${esc(p.target)}${p.why ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-top:2px">${esc(p.why)}</div>` : ""}</div>`).join("")}
