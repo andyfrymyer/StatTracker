@@ -77,7 +77,8 @@ async function open({ offline=false, prefs=null } = {}) {
   // Rows render newest-first, so the top row is the last entry in state.sessions.
   const newest = await p.evaluate(()=>{const s=[...state.sessions].sort((a,b)=>b.date.localeCompare(a.date))[0];
     return {id:s.id,c:s.closeAttempts,m:s.midAttempts};});
-  await p.locator("text=Swap Close / Mid").first().click();
+  // The swap moved in with the edit and delete icons and lost its text label.
+  await p.locator('button[aria-label^="Swap Close"]').first().click();
   await p.waitForTimeout(500);
   const after = await p.evaluate(id=>{const s=state.sessions.find(x=>x.id===id); return {c:s.closeAttempts,m:s.midAttempts};}, newest.id);
   check("swap exchanges close and mid on a saved session", after.c===newest.m && after.m===newest.c, {newest,after});
