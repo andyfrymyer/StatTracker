@@ -28,6 +28,7 @@ is already installed, or `TEST_BASE_URL` to serve from somewhere else.
 | `ui.test.mjs` | Calendar dates leading into the log, the shot-form chip, and the toast states |
 | `note-ui.test.mjs` | The refresh button, the loading skeleton, and the import leading the log form |
 | `dialog.test.mjs` | The PIN gate and destructive confirms, and that nothing falls back to prompt/confirm |
+| `detail.test.mjs` | The session detail screen, and dribbling staying out of the way until used |
 | `contrast.mjs` | Every rendered text node against its effective background, at WCAG AA |
 
 ## Notes
