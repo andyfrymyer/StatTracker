@@ -6,6 +6,8 @@ const n = v => (v===""||v===undefined)?null:Number(v);
 const sessions = lines.map((l,i)=>{const r=l.split(",");return {id:"s"+i,type:"shooting",date:r[0],time:r[1],label:r[3],attempts:n(r[4]),makes:n(r[5]),swishes:n(r[6]),closeAttempts:n(r[7]),closeMakes:n(r[8]),closeSwishes:n(r[9]),midAttempts:n(r[10]),midMakes:n(r[11]),midSwishes:n(r[12]),longAttempts:n(r[13]),longMakes:n(r[14]),longSwishes:n(r[15]),spinRate:n(r[16]),releaseTime:n(r[17]),shotArc:n(r[18]),intensity:n(r[19]),duration:n(r[20]),shotForm:r[21],shotType:r[22],badges:null};});
 let pass=0, fail=0;
 const check=(nm,c,x)=>{ c?(pass++,console.log("  ok  "+nm)):(fail++,console.log("FAIL  "+nm,x??"")); };
+const sessions_ids = sessions.map(s => s.id);
+const sessions_dates = sessions.map(s => s.date);
 const b = await chromium.launch({ executablePath: CHROMIUM });
 const ctx = await b.newContext({ viewport:{width:430,height:900} });
 const p = await ctx.newPage();
@@ -21,17 +23,14 @@ check("plain days stay unfocusable text", await p.locator("div.cal-day:not(.prac
 check("each has a label naming its date",
   (await practised.first().getAttribute("aria-label") || "").includes("session on"), await practised.first().getAttribute("aria-label"));
 await practised.last().click();
-await p.waitForTimeout(700);
-const jumped = await p.evaluate(() => {
-  const r = document.querySelector(".session-row.flash");
-  if (!r) return null;
-  const box = r.getBoundingClientRect();
-  return { id: r.id, onScreen: box.top > -50 && box.top < window.innerHeight };
-});
-check("tapping a date flashes a session row", !!jumped, jumped);
-check("and scrolls it into view", jumped && jumped.onScreen, jumped);
-check("the row matches the tapped date",
-  jumped && jumped.id === "session-s" + sessions.findIndex(s => s.date === "2026-08-27"), jumped && jumped.id);
+await p.waitForTimeout(600);
+// A marked day now opens that session outright rather than scrolling to its row.
+const opened = await p.evaluate(() => state.viewingId);
+check("tapping a date opens that session", !!opened, opened);
+check("it opens the right one",
+  opened === sessions_ids[sessions_dates.indexOf("2026-08-27")], opened);
+await p.evaluate(() => closeSession());
+await p.waitForTimeout(300);
 
 // --- Shot form reads as a label, not a measurement --------------------------
 const form = await p.evaluate(() => {

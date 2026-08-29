@@ -165,6 +165,10 @@
     background: var(--surface); border: none; border-radius: 16px; padding: 14px 16px;
     display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
   }
+  /* The row's left side is the way in; the icons keep their own actions. */
+  .session-open { flex: 1; min-width: 0; text-align: left; background: none; border: none;
+    padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer; }
+  .session-open:active { opacity: 0.6; }
   .session-title { font-size: 14.5px; font-weight: 700; color: var(--ink); }
   .session-sub { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
   /* Each reading wraps as a unit, so a line break can no longer strand a
@@ -288,9 +292,6 @@
   .cal-day.today:not(.practiced) { border: 1.5px solid var(--orange); font-weight:700; }
   button.cal-day { border: none; cursor: pointer; font-family: inherit; padding: 0; }
   button.cal-day.today { border: 1.5px solid var(--orange); }
-  /* Marks where the tapped session landed, then gets out of the way. */
-  @keyframes flash { from { background: #fdf1e6; } to { background: var(--surface); } }
-  .session-row.flash { animation: flash 1.4s ease-out; }
   /* Shot form is a label DribbleUp assigns, not a figure — it was carrying
      more weight than the percentages beside it. */
   /* --ink-2 lands at 4.47:1 on this fill, just under the 4.5 small text needs. */
@@ -582,6 +583,7 @@ let state = {
   coachNote: null,      // { summary, progress, focus, plan, goals, dataGaps, generatedAt, sessionCount }
   coachLoading: false,
   profile: "",          // free-text context about the player, for the AI note
+  viewingId: null,      // a single session opened from the log or the calendar
   notes: "",            // context for the session being logged right now
   apiBase: "",
   apiPin: "",
@@ -827,7 +829,7 @@ function showToast(msg, ms, kind) {
 }
 
 /* ---------- actions (exposed to window for inline handlers) ---------- */
-window.setTab = function (tab) { state.tab = tab; render(); };
+window.setTab = function (tab) { state.tab = tab; state.viewingId = null; render(); };
 window.setType = function (type) { state.type = type; render(); };
 window.updateShooting = function (key, val) {
   state.shooting[key] = val;
@@ -917,6 +919,7 @@ window.handleAdd = function () {
 window.startEdit = function (id) {
   const s = state.sessions.find((x) => x.id === id);
   if (!s) return;
+  state.viewingId = null;
   state.editingId = id;
   state.notes = s.notes || "";
   state.date = s.date;
@@ -956,10 +959,25 @@ window.cancelEdit = function () {
   state.tab = "dashboard";
   render();
 };
-window.handleDelete = function (id) {
-  state.sessions = state.sessions.filter((s) => s.id !== id);
+// A mis-tap on the trash icon used to destroy a session outright, with no
+// confirmation and nothing to undo it with.
+window.handleDelete = async function (id) {
+  const s = state.sessions.find((x) => x.id === id);
+  if (!s) return;
+  const what = s.type === "shooting"
+    ? `${s.makes}/${s.attempts} on ${fmtShort(s.date)}`
+    : `${s.drillName || "Dribbling"} on ${fmtShort(s.date)}`;
+  const ok = await askDialog({
+    title: "Delete this session?",
+    body: `${what}. This removes it from this device and from the server, and cannot be undone.`,
+    confirmLabel: "Delete", danger: true,
+  });
+  if (!ok) return;
+  state.sessions = state.sessions.filter((x) => x.id !== id);
+  if (state.viewingId === id) state.viewingId = null;
   persist();
   deleteSessionFromApi(id);
+  showToast("Session deleted", 2000, "ok");
   render();
 };
 window.loadDemo = function () {
@@ -1009,17 +1027,17 @@ window.enableReminders = function () {
     render();
   });
 };
-// Four marks in a month grid were decoration until they led somewhere.
+window.openSession = function (id) {
+  state.viewingId = id;
+  render();
+  window.scrollTo(0, 0);
+};
+window.closeSession = function () { state.viewingId = null; render(); };
+// A marked day opens that session rather than scrolling the log to it.
 window.jumpToSession = function (date) {
   const first = [...state.sessions].sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
     .find((s) => s.date === date);
-  if (!first) return;
-  const row = document.getElementById("session-" + first.id);
-  if (!row) return;
-  row.scrollIntoView({ behavior: "smooth", block: "center" });
-  row.classList.remove("flash");
-  void row.offsetWidth; // restart the animation if the same row is tapped twice
-  row.classList.add("flash");
+  if (first) openSession(first.id);
 };
 window.disableReminders = function () {
   state.remindersEnabled = false;
@@ -1897,7 +1915,8 @@ function render() {
     }
   } catch (e) {}
 
-  if (state.tab === "dashboard") body = renderDashboard();
+  if (state.tab === "dashboard" && state.viewingId) body = renderSessionDetail();
+  else if (state.tab === "dashboard") body = renderDashboard();
   else body = renderLogForm();
 
   const tabbar = `
@@ -2033,6 +2052,102 @@ function restoreHeroSlide() {
   if (!t || !heroSlideIndex) return;
   t.scrollLeft = t.clientWidth * heroSlideIndex;
   document.querySelectorAll(".hero-dot").forEach((dot, n) => dot.classList.toggle("active", n === heroSlideIndex));
+}
+// One session's whole picture. Tapping a row or a marked calendar day used to
+// scroll the log; there was nowhere that showed a single session properly.
+function renderSessionDetail() {
+  const s = state.sessions.find((x) => x.id === state.viewingId);
+  if (!s) { state.viewingId = null; return renderDashboard(); }
+  const d = computeDerived();
+  const entry = d.bySession.find((b) => b.date === s.date && b.time === (s.time || null));
+  const back = `<button class="btn-ghost" style="padding:9px 16px;font-size:13px" onclick="closeSession()">‹ Back</button>`;
+  let html = `<div style="padding:0 20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:18px">
+      ${back}
+      <span style="display:flex;gap:2px">
+        <button class="del-btn" onclick="startEdit('${s.id}')" aria-label="Edit this session">✎</button>
+        <button class="del-btn" onclick="handleDelete('${s.id}')" aria-label="Delete this session">🗑</button>
+      </span>
+    </div>`;
+
+  if (s.type === "shooting") {
+    const pct = s.attempts > 0 ? Math.round((s.makes / s.attempts) * 1000) / 10 : null;
+    const swishPct = s.attempts > 0 ? Math.round(((s.swishes || 0) / s.attempts) * 1000) / 10 : null;
+    html += `<div class="hero">
+      <div class="hero-value">${pct === null ? "—" : pct}<span class="hero-suffix">%</span></div>
+      <div class="hero-label">${esc(s.label || "Shootaround")}</div>
+      <div class="hero-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${s.makes}/${s.attempts}${
+        d.pctSpread ? ` · career ${d.overallPct}%` : ""}</div>
+      <div class="hero-row">
+        <div class="hero-stat"><div class="hero-stat-v">${s.attempts}</div><div class="hero-stat-l">Attempts</div></div>
+        <div class="hero-stat"><div class="hero-stat-v">${s.makes}</div><div class="hero-stat-l">Makes</div></div>
+        ${s.swishes !== null && s.swishes !== undefined
+          ? `<div class="hero-stat"><div class="hero-stat-v">${s.swishes}</div><div class="hero-stat-l">Swishes</div></div>` : ""}
+      </div>
+    </div>`;
+
+    const zones = ["close", "mid", "long"].map((z) => ({
+      z, label: z === "close" ? "Close-range" : z === "mid" ? "Mid-range" : "Long-range",
+      att: s[z + "Attempts"] || 0, mk: s[z + "Makes"] || 0,
+      colour: { close: "var(--blue)", mid: "var(--orange)", long: "var(--green)" }[z],
+    })).filter((z) => z.att > 0);
+    if (zones.length) {
+      html += `<div class="card"><div class="chart-title" style="padding:0 0 10px">By distance</div>
+        ${zones.map((z) => {
+          const p = Math.round((z.mk / z.att) * 1000) / 10;
+          const thin = z.att < 5;
+          return `<div style="margin-bottom:11px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+              <span style="font-size:13px;font-weight:600;color:${thin ? "var(--ink-2)" : "var(--ink)"}">${z.label}</span>
+              <span style="font-size:12.5px;color:var(--ink-2)">${thin ? `${z.att} attempt${z.att === 1 ? "" : "s"} — too few to read` : `${z.mk}/${z.att} · <strong style="color:var(--ink)">${p}%</strong>`}</span>
+            </div>
+            ${thin ? "" : `<div style="height:6px;border-radius:99px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:${Math.min(100, p)}%;background:${z.colour};border-radius:99px"></div></div>`}
+          </div>`;
+        }).join("")}
+        <button class="btn-link" style="padding:0;margin-top:4px" onclick="swapSessionZones('${s.id}')">⇅ Swap Close and Mid</button>
+      </div>`;
+    }
+
+    const suspect = new Set(d.suspectMechanics);
+    const mechs = [["Spin rate", s.spinRate, "Spin rate"], ["Release time", s.releaseTime, "Release time"],
+                   ["Shot arc", s.shotArc, "Shot arc"], ["Intensity", s.intensity, "Intensity"]]
+      .filter(([, v]) => v !== null && v !== undefined);
+    if (mechs.length || s.shotForm || s.shotType || s.duration != null) {
+      html += `<div class="card flush"><div class="chart-title">This session</div>
+        ${mechs.map(([label, v, key]) => {
+          const shaky = suspect.has(key);
+          return `<div class="trend-row"><span class="trend-label"${shaky ? ' style="color:var(--ink-2)"' : ""}>${label}</span>
+            <span class="trend-value"${shaky ? ' style="color:var(--ink-2);font-weight:600"' : ""}>${v}%${shaky ? " — unreliable" : ""}</span></div>`;
+        }).join("")}
+        ${s.duration != null ? `<div class="trend-row"><span class="trend-label">Duration</span><span class="trend-value">${s.duration} min</span></div>` : ""}
+        ${s.shotType ? `<div class="trend-row"><span class="trend-label">Shot type</span><span class="trend-value" style="font-size:14px">${esc(s.shotType)}</span></div>` : ""}
+        ${s.shotForm ? `<div class="trend-row"><span class="trend-label">Shot form</span><span class="form-chip ${(s.shotForm || "").toLowerCase() === "consistent" ? "good" : ""}">${esc(s.shotForm)}</span></div>` : ""}
+      </div>`;
+    }
+    if (Array.isArray(s.badges) && s.badges.length) {
+      html += `<div class="card flush"><div class="chart-title">Badges</div>
+        <div>${s.badges.map((bg) => `<span class="badge-chip">${bg.grade ? `<span class="badge-grade">${esc(bg.grade)}</span>` : ""}${esc(bg.name)}</span>`).join("")}</div>
+      </div>`;
+    }
+  } else {
+    html += `<div class="hero">
+      <div class="hero-value">${s.points}</div>
+      <div class="hero-label">${esc(s.drillName || "Dribbling")}</div>
+      <div class="hero-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""}</div>
+      <div class="hero-row">
+        <div class="hero-stat"><div class="hero-stat-v">${s.reps}</div><div class="hero-stat-l">Reps</div></div>
+        ${s.duration != null ? `<div class="hero-stat"><div class="hero-stat-v">${s.duration}<span class="stat-suffix">m</span></div><div class="hero-stat-l">Duration</div></div>` : ""}
+      </div>
+    </div>`;
+  }
+
+  html += `<div class="card flush"><div class="chart-title">Notes</div>
+    <div style="font-size:13.5px;color:${s.notes ? "var(--ink)" : "var(--ink-2)"};line-height:1.5">${
+      s.notes ? esc(s.notes) : "Nothing recorded for this session. Editing it lets you add what the numbers miss."
+    }</div>
+  </div>`;
+  html += `<div style="margin-top:18px">${back}</div></div>`;
+  return html;
 }
 function renderDashboard() {
   if (state.sessions.length === 0) {
@@ -2420,9 +2535,9 @@ function renderDashboard() {
       if (bits.length) mechLine = `<div class="mech-line">${bits.join("")}</div>`;
     }
     html += `<div class="session-row" id="session-${s.id}">
-      <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}${
+      <button class="session-open" onclick="openSession('${s.id}')" aria-label="Open ${title}, ${fmtShort(s.date)}"><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}${
         s.notes ? `<div style="font-size:12px;color:var(--ink-2);margin-top:5px;line-height:1.4">${esc(s.notes)}</div>` : ""
-      }</div>
+      }</button>
       <span style="display:flex;gap:2px;flex-shrink:0">
       ${s.type === "shooting" && ((s.closeAttempts || 0) + (s.midAttempts || 0)) > 0
         ? `<button class="del-btn" onclick="swapSessionZones('${s.id}')" title="Swap this session's Close and Mid" aria-label="Swap Close and Mid for this session">⇅</button>` : ""}
@@ -2761,10 +2876,12 @@ function renderLogForm() {
     ` : ""}
   </div>`;
 
-  html += `<div class="row" style="margin-bottom:18px">
+  const everDribbled = state.sessions.some((s) => s.type === "dribbling");
+  const showBothTypes = everDribbled || state.type === "dribbling";
+  html += showBothTypes ? `<div class="row" style="margin-bottom:18px">
     <button class="seg-btn ${state.type === "shooting" ? "active" : ""}" onclick="setType('shooting')">Shooting</button>
     <button class="seg-btn ${state.type === "dribbling" ? "active" : ""}" onclick="setType('dribbling')">Dribbling</button>
-  </div>`;
+  </div>` : "";
 
   html += `<div class="row">
     ${fieldHtml("Date", `<input class="input" id="f-date" type="date" value="${state.date}" max="${todayStr()}" oninput="updateDate(this.value)" />`)}
@@ -2843,6 +2960,9 @@ function renderLogForm() {
   html += fieldHtml("Notes (optional)", `<textarea class="input" id="f-notes" rows="2" style="resize:vertical;line-height:1.45" placeholder="Anything the numbers miss — outdoor, tired, first session back, new drill." oninput="updateNotes(this.value)">${esc(state.notes)}</textarea>`);
 
   if (state.error) html += `<div style="color:var(--red);font-size:12.5px;margin-bottom:10px">${state.error}</div>`;
+  if (!showBothTypes) {
+    html += `<div style="text-align:center;margin-top:14px"><button class="btn-link" onclick="setType('dribbling')">Log a DribbleUp session instead</button></div>`;
+  }
   html += `<button class="btn-primary" style="width:100%;margin-top:6px" onclick="handleAdd()">${state.editingId ? "Save Changes" : "Log Session"}</button>`;
   html += `</div>`;
   return html;
