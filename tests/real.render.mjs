@@ -47,8 +47,15 @@ check("hero secondary row present", t.includes("sessions") && t.includes("shots"
 check("dead Dribble Pts tile hidden (no dribbling logged)", !t.includes("dribble pts"));
 check("FG% by session chart present", t.includes("shooting % by session"));
 check("spread line present", t.includes("34.1–50.5% across 4 sessions"));
-check("zone-by-session chart present", t.includes("zone fg% by session"));
-check("long range excluded with a reason", t.includes("long-range left out") && t.includes("2 attempts"));
+check("distance card present", t.includes("by distance"));
+check("long range stated as too thin to read, not as 0%",
+  t.includes("2 attempts — too few to read") && !/long[- ]range[^\n]*\b0%/.test(t));
+// The pills and a separate totals card both printed the raw zone split
+// alongside the chart. The hero slide still names a zone, which is the point
+// of it, so count the totals string rather than the label.
+check("zone totals appear in exactly one block",
+  (t.match(/215\/412/g) || []).length === 1, (t.match(/215\/412/g) || []).length);
+check("no standalone shooting-by-distance card", !t.includes("shooting by distance"));
 check("shot type card present", t.includes("by shot type"));
 check("shot type shows the gap", t.includes("47.5%") && t.includes("34.1%"));
 check("weekly charts hidden at 3 weeks", !t.includes("shooting % by week"));
