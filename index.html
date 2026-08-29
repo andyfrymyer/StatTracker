@@ -227,7 +227,14 @@
     .btn-primary:active, .btn-ghost:active, .seg-btn:active, .tab-btn:active, .hero-dot:active { transform: none; }
   }
   .toast { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; font-weight:700; font-size:13px; padding: 11px 20px; border-radius: 999px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 50; max-width: 86vw; text-align:center; }
+  .toast { display: flex; align-items: center; gap: 9px; }
   .toast.show { opacity: 1; }
+  .toast-mark { display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 800;
+    flex-shrink: 0; background: #fff; color: var(--ink); }
+  .toast.ok .toast-mark { background: var(--green); color: #fff; }
+  .toast.error { background: var(--red); }
+  .toast.error .toast-mark { background: #fff; color: var(--red); }
   .cal-nav-btn { background:none; border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--ink); cursor:pointer; }
   .cal-grid { display:grid; grid-template-columns: repeat(7,1fr); gap:2px; text-align:center; }
   .cal-dow { font-size:10.5px; color: var(--ink-2); padding: 2px 0; }
@@ -235,6 +242,17 @@
   .cal-day { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11.5px; color:var(--ink); }
   .cal-day.practiced { background: var(--ink); color: #fff; font-weight:700; }
   .cal-day.today:not(.practiced) { border: 1.5px solid var(--orange); font-weight:700; }
+  button.cal-day { border: none; cursor: pointer; font-family: inherit; padding: 0; }
+  button.cal-day.today { border: 1.5px solid var(--orange); }
+  /* Marks where the tapped session landed, then gets out of the way. */
+  @keyframes flash { from { background: #fdf1e6; } to { background: var(--surface); } }
+  .session-row.flash { animation: flash 1.4s ease-out; }
+  /* Shot form is a label DribbleUp assigns, not a figure — it was carrying
+     more weight than the percentages beside it. */
+  /* --ink-2 lands at 4.47:1 on this fill, just under the 4.5 small text needs. */
+  .form-chip { font-size: 12px; font-weight: 700; color: #636363; background: var(--surface-2);
+    border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+  .form-chip.good { color: #0f5c39; background: #e4f2ea; }
   .insight-card { display:flex; gap:12px; align-items:flex-start; padding:18px; border-radius:18px; margin-bottom:14px; border:none; background: var(--surface); }
   .insight-card.warning { background: var(--surface); }
   .insight-card.positive { background: var(--surface); }
@@ -554,16 +572,16 @@ function load() {
 }
 function persist() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.sessions)); }
-  catch (e) { showToast("Couldn't save — storage full or blocked."); }
+  catch (e) { showToast("Couldn't save — storage full or blocked.", 3500, "error"); }
 }
 function persistGoals() {
   try { localStorage.setItem(GOALS_KEY, JSON.stringify(state.goals)); }
-  catch (e) { showToast("Couldn't save goals."); }
+  catch (e) { showToast("Couldn't save goals.", 3500, "error"); }
 }
 // Kept locally for instant reads; schedulePushPrefs mirrors it to the server.
 function persistProfile() {
   try { localStorage.setItem(PROFILE_KEY, state.profile); }
-  catch (e) { showToast("Couldn't save profile."); }
+  catch (e) { showToast("Couldn't save profile.", 3500, "error"); }
 }
 function apiConfigured() { return !!state.apiBase; }
 let prefsPushTimer = null;
@@ -644,7 +662,7 @@ async function syncFromApi() {
     state.syncStatus = "synced";
   } catch (e) {
     state.syncStatus = "error";
-    showToast("Cloud sync failed — showing local data");
+    showToast("Cloud sync failed — showing local data", 3500, "error");
   }
   render();
 }
@@ -708,10 +726,13 @@ window.disconnectApi = function () {
     render();
   });
 };
-function showToast(msg, ms) {
+// kind is "ok", "error" or omitted for a plain acknowledgement. A failure and
+// a success used to differ only in their wording.
+function showToast(msg, ms, kind) {
   const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
+  const mark = kind === "ok" ? "✓" : kind === "error" ? "!" : "";
+  t.innerHTML = (mark ? `<span class="toast-mark">${mark}</span>` : "") + `<span>${esc(msg)}</span>`;
+  t.className = "toast show" + (kind ? " " + kind : "");
   // Clear any previous timer, or a toast that replaces an older one inherits
   // the leftover countdown and flashes past before it can be read.
   clearTimeout(showToast._timer);
@@ -791,12 +812,12 @@ window.handleAdd = function () {
     state.editingId = null;
     persist();
     pushSessionToApi(entry);
-    showToast("Session updated");
+    showToast("Session updated", 1800, "ok");
   } else {
     state.sessions = [...state.sessions, entry].sort((a, b) => a.date.localeCompare(b.date));
     persist();
     pushSessionToApi(entry);
-    showToast("Session logged");
+    showToast("Session logged", 1800, "ok");
   }
   state.shooting = emptyShooting();
   state.dribbling = emptyDribbling();
@@ -873,7 +894,7 @@ window.clearAll = function () {
 };
 window.enableReminders = function () {
   if (!("Notification" in window)) {
-    showToast("This browser doesn't support notifications.");
+    showToast("This browser doesn't support notifications.", 4000, "error");
     return;
   }
   if (isIOS() && !isStandalone()) {
@@ -884,7 +905,7 @@ window.enableReminders = function () {
     state.remindersEnabled = perm === "granted";
     try { localStorage.setItem(REMINDERS_KEY, state.remindersEnabled ? "1" : "0"); } catch (e) {}
     if (state.remindersEnabled) {
-      showToast("Reminders on");
+      showToast("Reminders on", 1800, "ok");
       maybeNotify(true);
     } else if (perm === "denied") {
       // Genuinely blocked: the browser will not ask again from a tap.
@@ -895,6 +916,18 @@ window.enableReminders = function () {
     }
     render();
   });
+};
+// Four marks in a month grid were decoration until they led somewhere.
+window.jumpToSession = function (date) {
+  const first = [...state.sessions].sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+    .find((s) => s.date === date);
+  if (!first) return;
+  const row = document.getElementById("session-" + first.id);
+  if (!row) return;
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.classList.remove("flash");
+  void row.offsetWidth; // restart the animation if the same row is tapped twice
+  row.classList.add("flash");
 };
 window.disableReminders = function () {
   state.remindersEnabled = false;
@@ -1136,10 +1169,10 @@ window.refreshCoachNote = async function (force) {
       try { localStorage.setItem(COACH_CACHE_KEY, JSON.stringify(note)); } catch (e) {}
       schedulePushPrefs();
     } else {
-      showToast("AI analysis returned nothing usable", 4000);
+      showToast("AI analysis returned nothing usable", 4000, "error");
     }
   } catch (e) {
-    showToast(coachErrorText(e), 5000);
+    showToast(coachErrorText(e), 5000, "error");
   } finally {
     state.coachLoading = false;
     render();
@@ -1152,7 +1185,7 @@ window.applySuggestedGoals = function () {
   if (g.dribbleMinutes) state.goals.dribbleMinutes = Number(g.dribbleMinutes);
   persistGoals();
   schedulePushGoals();
-  showToast("Weekly goals updated");
+  showToast("Weekly goals updated", 1800, "ok");
   render();
 };
 
@@ -1169,7 +1202,7 @@ window.swapSessionZones = function (id) {
   }
   persist();
   pushSessionToApi(s);
-  showToast("Swapped Close and Mid for that session");
+  showToast("Swapped Close and Mid for that session", 1800, "ok");
   render();
 };
 window.swapCloseMid = function () {
@@ -1179,7 +1212,7 @@ window.swapCloseMid = function () {
     s["close" + suffix] = s["mid" + suffix];
     s["mid" + suffix] = tmp;
   }
-  showToast("Swapped Close and Mid");
+  showToast("Swapped Close and Mid", 1800, "ok");
   render();
 };
 
@@ -1444,7 +1477,7 @@ window.exportCsv = function () {
   a.href = url; a.download = `shootingiq-sessions-${todayStr()}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast("CSV exported");
+  showToast("CSV exported", 1800, "ok");
 };
 
 window.triggerImport = function () { document.getElementById("importFile").click(); };
@@ -1460,9 +1493,9 @@ document.getElementById("importFile").addEventListener("change", function (e) {
         state.sessions = data;
         persist();
         replaceSessionsInApi(data);
-        showToast("Data imported");
+        showToast("Data imported", 1800, "ok");
         render();
-      } catch (err) { showToast("Couldn't read that file"); }
+      } catch (err) { showToast("Couldn't read that file", 3500, "error"); }
     };
     reader.readAsText(file);
   });
@@ -2178,7 +2211,7 @@ function renderDashboard() {
           <span class="trend-label">Shot form</span>
           <span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">consistent in ${d.formCounts.Consistent} of ${total} session${total === 1 ? "" : "s"} (${consistentPct}%)</span>
         </span>
-        <span class="trend-value" style="color:${(d.latestForm.shotForm || "").toLowerCase() === "consistent" ? "var(--green)" : "var(--ink)"}">${esc(d.latestForm.shotForm)}</span>
+        <span class="form-chip ${(d.latestForm.shotForm || "").toLowerCase() === "consistent" ? "good" : ""}">${esc(d.latestForm.shotForm)}</span>
       </div>`;
     }
     html += `</div>`;
@@ -2219,7 +2252,12 @@ function renderDashboard() {
         const practiced = d.practicedDates.has(cell);
         const isToday = cell === todayStr();
         const dayNum = Number(cell.slice(-2));
-        return `<div class="cal-cell"><div class="cal-day ${practiced ? "practiced" : ""} ${isToday ? "today" : ""}">${dayNum}</div></div>`;
+        // A practised day is the only cell that leads anywhere, so only it
+        // becomes a button — the rest stay plain text and unfocusable.
+        const inner = practiced
+          ? `<button class="cal-day practiced ${isToday ? "today" : ""}" onclick="jumpToSession('${cell}')" title="Go to this session" aria-label="Go to the session on ${fmtShort(cell)}">${dayNum}</button>`
+          : `<div class="cal-day ${isToday ? "today" : ""}">${dayNum}</div>`;
+        return `<div class="cal-cell">${inner}</div>`;
       }).join("")}
     </div>
   </div>`;
@@ -2248,7 +2286,7 @@ function renderDashboard() {
       if (s.shotForm) bits.push(`<span class="mech-bit">${esc(s.shotForm.toLowerCase())}</span>`);
       if (bits.length) mechLine = `<div class="mech-line">${bits.join("")}</div>`;
     }
-    html += `<div class="session-row">
+    html += `<div class="session-row" id="session-${s.id}">
       <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}${
         s.notes ? `<div style="font-size:12px;color:var(--ink-2);margin-top:5px;line-height:1.4">${esc(s.notes)}</div>` : ""
       }</div>
