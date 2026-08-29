@@ -22,6 +22,7 @@ is already installed, or `TEST_BASE_URL` to serve from somewhere else.
 | `real.render.mjs` | The dashboard against `fixtures/sessions.csv`, including captured chart configs |
 | `swipe.test.mjs` | The hero carousel, driven with real touch events through CDP |
 | `improve.test.mjs` | Offline rendering, pace tracking, zone swap, session notes, synced prefs |
+| `look.test.mjs` | Self-hosted fonts load without touching the network, the log form's layout, the empty state |
 | `contrast.mjs` | Every rendered text node against its effective background, at WCAG AA |
 
 ## Notes
@@ -29,9 +30,9 @@ is already installed, or `TEST_BASE_URL` to serve from somewhere else.
 `fixtures/sessions.csv` is a real four-session export, so the assertions carry
 real numbers rather than invented ones.
 
-`vendor/fonts/` holds the Barlow Condensed and Inter woff2 files. Google Fonts is
-often unreachable from a test environment, and without the real faces a visual
-check is looking at a fallback rather than at the app.
+`vendor/fonts/` holds the full Google Fonts download. The app now self-hosts the
+six faces it actually uses from `../fonts/`; this directory keeps the rest so a
+future weight can be pulled from here rather than re-fetched.
 
 Two suites deliberately block `chart.umd.min.js` so their stub `Chart` survives
 and can capture what the app asked to draw. `improve.test.mjs` blocks it for a
