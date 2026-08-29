@@ -143,6 +143,8 @@
     width: 100%; background: var(--surface); border: 1px solid transparent; border-radius: 12px;
     padding: 12px 14px; color: var(--ink); font-size: 15px;
   }
+  /* Inside a card the surface colour matches the field, so invert it. */
+  .card .input { background: var(--bg); border-color: var(--line); }
   .btn-primary {
     background: var(--ink); color: #fff; border: none; border-radius: 999px; padding: 13px 22px;
     font-weight: 700; font-size: 14px; cursor: pointer;
@@ -169,7 +171,8 @@
     text-transform: none; margin: 26px 0 12px; }
   .zone-pill { flex:1; background: var(--surface); border: none; border-radius: 16px; padding: 12px 8px; text-align:center; }
   .zone-dot { width: 8px; height: 8px; border-radius: 50%; margin: 0 auto 6px; }
-  .best-row { background: var(--surface); border: none; border-radius: 16px; padding: 12px 16px; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .best-row { background: none; border: none; border-bottom: 1px solid var(--line); border-radius: 0; padding: 11px 2px; display:flex; justify-content:space-between; align-items:center; margin-bottom:0; }
+  .best-row:last-child { border-bottom: none; }
   .best-label { font-size: 13.5px; color: var(--ink); font-weight: 700; }
   .best-sub { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
   .best-value { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
@@ -1961,7 +1964,7 @@ function renderDashboard() {
   const shotsMet = d.thisWeek.attempts >= state.goals.shots;
   const dribbleMet = d.thisWeek.dribbleMin >= state.goals.dribbleMinutes;
   html += `<div class="card flush">
-    <div style="font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">Weekly Goals</div>
+    <div class="section-label" style="margin:0 0 12px">Weekly Goals</div>
     <div style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
         <span style="font-size:13px;color:var(--ink);font-weight:600">Shots</span>
@@ -1971,15 +1974,15 @@ function renderDashboard() {
         <div style="height:100%;width:${shotsPct}%;background:${shotsMet ? "var(--green)" : "var(--orange)"};border-radius:99px"></div>
       </div>
     </div>
-    <div>
+    ${d.dribblingSessions.length ? `<div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
         <span style="font-size:13px;color:var(--ink);font-weight:600">DribbleUp minutes</span>
         <span style="font-size:12.5px;color:${dribbleMet ? "var(--green)" : "var(--gray)"}">${d.thisWeek.dribbleMin} / <input class="input" id="f-goal-dribbleMinutes" type="number" min="1" value="${state.goals.dribbleMinutes}" oninput="updateGoal('dribbleMinutes', this.value)" style="display:inline-block;width:56px;padding:2px 6px;font-size:12.5px;text-align:center" /> min</span>
       </div>
-      <div style="height:8px;border-radius:99px;background:var(--navy-line);overflow:hidden">
+      <div style="height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden">
         <div style="height:100%;width:${dribblePct}%;background:${dribbleMet ? "var(--green)" : "var(--orange)"};border-radius:99px"></div>
       </div>
-    </div>
+    </div>` : ""}
   </div>`;
 
   const prevWeekKey = addDays(getMonday(todayStr()), -7);
