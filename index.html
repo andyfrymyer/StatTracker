@@ -11,11 +11,61 @@
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="icon" href="icon-192.png" />
 <title>ShootingIQ</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
+  /* Self-hosted so the app keeps its own typography offline; the hero and
+     the wordmark are the whole identity and a system fallback loses both.
+     Only the two Barlow faces actually used, and Inter's variable file,
+     which covers 400-700 on its own. Latin and latin-ext only. */
+  @font-face {
+    font-family: 'Barlow Condensed';
+    font-style: italic;
+    font-weight: 800;
+    font-display: swap;
+    src: url(fonts/barlow-condensed-italic-800-latin-ext.woff2) format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'Barlow Condensed';
+    font-style: italic;
+    font-weight: 800;
+    font-display: swap;
+    src: url(fonts/barlow-condensed-italic-800-latin.woff2) format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Barlow Condensed';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url(fonts/barlow-condensed-700-latin-ext.woff2) format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'Barlow Condensed';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url(fonts/barlow-condensed-700-latin.woff2) format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(fonts/inter-latin-ext.woff2) format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url(fonts/inter-latin.woff2) format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
   :root {
     /* Near-white ground, near-black ink, colour reserved for data and the
        brand mark. Weight and space do the separating, not borders. */
@@ -1773,14 +1823,28 @@ function restoreHeroSlide() {
 }
 function renderDashboard() {
   if (state.sessions.length === 0) {
+    // First thing a new device shows, so it uses the same hero shape the real
+    // dashboard does — a dash where the number goes — rather than a bare box,
+    // and says what the app will do with a session once there is one.
     return `
       <div style="padding:0 20px">
-        <div class="card empty-box">
-          <div style="font-size:15px;color:var(--ink-2);margin-bottom:14px">No sessions logged yet.</div>
-          <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-            <button class="btn-primary" onclick="setTab('log')">+ Log first session</button>
-            <button class="btn-ghost" onclick="loadDemo()">Load demo month</button>
-          </div>
+        <div class="hero">
+          <div class="hero-value" style="color:var(--surface-2)">0.0<span class="hero-suffix">%</span></div>
+          <div class="hero-label">No sessions yet</div>
+          <div class="hero-sub">Log one and this becomes her last-session FG%, with the range across every session underneath.</div>
+        </div>
+        <button class="btn-primary" style="width:100%;margin-bottom:10px" onclick="setTab('log')">Log the first session</button>
+        <button class="btn-ghost" style="width:100%;margin-bottom:22px" onclick="loadDemo()">Load a demo month instead</button>
+        <div style="border-top:1px solid var(--line);padding-top:18px">
+          <div style="font-size:17px;font-weight:800;letter-spacing:-0.02em;color:var(--ink);margin-bottom:10px">What you'll get</div>
+          ${[
+            ["Shot a DribbleUp screen?", "Import the screenshot and the numbers fill themselves in — including the shots-by-distance popup."],
+            ["Zone and shot-type splits", "Where the points are actually going: close against mid, relaxed against catch &amp; shoot."],
+            ["An AI coach's note", "Reads every session and answers with drills and rep counts, not a paragraph of encouragement."],
+          ].map(([t, b]) => `<div style="margin-bottom:14px">
+            <div style="font-size:13.5px;font-weight:700;color:var(--ink);margin-bottom:2px">${t}</div>
+            <div style="font-size:12.5px;color:var(--ink-2);line-height:1.5">${b}</div>
+          </div>`).join("")}
         </div>
         ${renderSyncCard()}
       </div>`;
@@ -2461,7 +2525,6 @@ function renderLogForm() {
 
   html += `<div class="row">
     ${fieldHtml("Date", `<input class="input" id="f-date" type="date" value="${state.date}" max="${todayStr()}" oninput="updateDate(this.value)" />`)}
-    ${fieldHtml("Notes (optional)", `<textarea class="input" id="f-notes" rows="2" style="resize:vertical;line-height:1.45" placeholder="Anything the numbers miss — outdoor, tired, first session back, new drill." oninput="updateNotes(this.value)">${esc(state.notes)}</textarea>`)}
     ${fieldHtml("Time", `<input class="input" id="f-time" type="time" value="${state.time}" oninput="updateTime(this.value)" />`)}
   </div>`;
 
@@ -2490,8 +2553,8 @@ function renderLogForm() {
       ${fieldHtml("Duration (min)" + ocrTag(s, "duration"), `<input class="input${ocrClass(s, "duration")}" id="f-shooting-duration" type="number" min="0" value="${s.duration}" oninput="updateShooting('duration', this.value)" />`)}
     </div>`;
     html += `<div class="field">
-      <label>Shots by distance ${ocrTag(s, "closeAttempts")}</label>
-      <div style="font-size:10.5px;color:var(--gray);margin:-2px 0 8px">Attempts / makes / swishes per zone. Import the "Shots by distance" popup to fill automatically.</div>
+      <label style="font-size:17px;font-weight:800;letter-spacing:-0.02em;color:var(--ink);margin-bottom:2px">Shots by distance ${ocrTag(s, "closeAttempts")}</label>
+      <div style="font-size:12px;color:var(--ink-2);margin:0 0 10px;line-height:1.45">Attempts / makes / swishes per zone. Import the "Shots by distance" popup to fill automatically.</div>
       ${s._zoneGuess ? `<div style="background:rgba(244,123,32,0.12);border:1px solid var(--orange);border-radius:9px;padding:9px 11px;margin-bottom:10px;font-size:11.5px;color:var(--ink);line-height:1.45">
         ⚠️ Close vs Mid can't be told apart from the screenshot text — check them against the popup.
         <button type="button" onclick="swapCloseMid()" style="display:block;margin-top:7px;background:var(--orange);color:var(--navy);border:none;border-radius:7px;padding:6px 12px;font-weight:700;font-size:11.5px;cursor:pointer">⇅ Swap Close / Mid</button>
@@ -2508,6 +2571,7 @@ function renderLogForm() {
         </div>`;
       }).join("")}
     </div>`;
+    html += `<div style="font-size:17px;font-weight:800;letter-spacing:-0.02em;color:var(--ink);margin:20px 0 10px">Shot mechanics</div>`;
     html += `<div class="row">
       ${fieldHtml("Spin rate (%)" + ocrTag(s, "spinRate"), `<input class="input${ocrClass(s, "spinRate")}" id="f-shooting-spinRate" type="number" min="0" max="100" value="${s.spinRate}" oninput="updateShooting('spinRate', this.value)" />`)}
       ${fieldHtml("Release time (%)" + ocrTag(s, "releaseTime"), `<input class="input${ocrClass(s, "releaseTime")}" id="f-shooting-releaseTime" type="number" min="0" max="100" value="${s.releaseTime}" oninput="updateShooting('releaseTime', this.value)" />`)}
@@ -2532,6 +2596,8 @@ function renderLogForm() {
     </div>`;
     html += fieldHtml("Duration (min)", `<input class="input" id="f-dribbling-duration" type="number" min="0" value="${dr.duration}" oninput="updateDribbling('duration', this.value)" />`);
   }
+
+  html += fieldHtml("Notes (optional)", `<textarea class="input" id="f-notes" rows="2" style="resize:vertical;line-height:1.45" placeholder="Anything the numbers miss — outdoor, tired, first session back, new drill." oninput="updateNotes(this.value)">${esc(state.notes)}</textarea>`);
 
   if (state.error) html += `<div style="color:var(--red);font-size:12.5px;margin-bottom:10px">${state.error}</div>`;
   html += `<button class="btn-primary" style="width:100%;margin-top:6px" onclick="handleAdd()">${state.editingId ? "Save Changes" : "Log Session"}</button>`;
