@@ -20,21 +20,32 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 
-const SUITES = ["test.mjs", "hang.mjs", "payload.test.mjs", "dupe.test.mjs", "render.test.mjs",
-                "real.render.mjs", "swipe.test.mjs", "improve.test.mjs", "contrast.mjs"];
+const SUITES = ["test.mjs", "hang.mjs", "payload.test.mjs", "dupe.test.mjs", "escape.test.mjs",
+                "render.test.mjs", "real.render.mjs", "swipe.test.mjs", "improve.test.mjs", "contrast.mjs"];
+// Dates are timezone-sensitive, and UTC alone hides the entire bug class.
+const DATE_ZONES = ["UTC", "America/New_York", "America/Los_Angeles", "Europe/Berlin", "Asia/Tokyo", "Pacific/Auckland"];
 
 // Must be async: spawnSync would block this process's event loop, and the
 // server above lives in it — the suites would then sit waiting on a page that
 // could never be served.
-const run = (file) => new Promise((resolve) => {
-  spawn(process.execPath, [P(file)], { stdio: "inherit", env: process.env })
+const run = (file, env) => new Promise((resolve) => {
+  spawn(process.execPath, [P(file)], { stdio: "inherit", env: env || process.env })
     .on("close", (code) => resolve(code));
 });
 
-await new Promise((r) => server.listen(PORT, "127.0.0.1", r));
+await new Promise((resolve, reject) => {
+  server.once("error", (e) => reject(e.code === "EADDRINUSE"
+    ? new Error(`Port ${PORT} is already in use. Stop whatever is on it, or set TEST_BASE_URL to another port.`)
+    : e));
+  server.listen(PORT, "127.0.0.1", resolve);
+}).catch((e) => { console.error(e.message); process.exit(1); });
 if (await run("lib/extract.mjs") !== 0) { server.close(); process.exit(1); }
 
 let failed = [];
+for (const tz of DATE_ZONES) {
+  process.stdout.write(`\n── dates.test.mjs (${tz})\n`);
+  if (await run("dates.test.mjs", { ...process.env, TZ: tz }) !== 0) failed.push(`dates.test.mjs (${tz})`);
+}
 for (const suite of SUITES) {
   process.stdout.write(`\n── ${suite}\n`);
   if (await run(suite) !== 0) failed.push(suite);

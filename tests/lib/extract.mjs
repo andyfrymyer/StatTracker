@@ -26,7 +26,7 @@ const BUNDLES = {
     "function coachErrorText(e) {",
   ],
   "payload.js": [
-    "function todayStr()", "function addDays(", "function getMonday(", "function fmtShort(",
+    "function esc(", "function localDateStr(", "function todayStr()", "function addDays(", "function getMonday(", "function fmtShort(",
     "function fmtWeekLabel(", "function computeDayStreak(", "function longestDayStreak(",
     "function computeInsight(", "function getMonthKey(", "function fmtMonthLabel(",
     "function prevMonthKey(", "function computeDerived()", "function buildCoachPayload()",

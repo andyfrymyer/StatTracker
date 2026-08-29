@@ -224,18 +224,30 @@ const PROFILE_KEY = "ella-profile-standalone";
 const DEFAULT_API_BASE = "https://ella-tracker-api-production.up.railway.app";
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
-function todayStr() { return new Date().toISOString().slice(0, 10); }
+function esc(v) {
+  return v === null || v === undefined ? "" : String(v)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+// Dates here are calendar days in the player's own timezone. toISOString()
+// answers in UTC, so it reported tomorrow for an evening session in the
+// Americas and yesterday for a morning one east of Greenwich — and that date
+// then fed the streak, the week bucket and the weekly pace.
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function todayStr() { return localDateStr(new Date()); }
 function addDays(dateStr, n) {
   const d = new Date(dateStr + "T00:00:00");
   d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return localDateStr(d);
 }
 function getMonday(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
+  return localDateStr(d);
 }
 function fmtShort(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
@@ -1383,7 +1395,7 @@ function computeDerived() {
   const thisWeek = weekly.find((w) => w.week === thisWeekKey) || { attempts: 0, makes: 0, points: 0, reps: 0, dribbleMin: 0, hasShooting: false, hasDribbling: false };
   const weekSet = new Set(weekly.map((w) => w.week));
   let weekStreak = 0, cursor = thisWeekKey;
-  while (weekSet.has(cursor)) { weekStreak++; const d = new Date(cursor + "T00:00:00"); d.setDate(d.getDate() - 7); cursor = d.toISOString().slice(0, 10); }
+  while (weekSet.has(cursor)) { weekStreak++; const d = new Date(cursor + "T00:00:00"); d.setDate(d.getDate() - 7); cursor = localDateStr(d); }
   const shootingSessions = sessions.filter((s) => s.type === "shooting");
   const dribblingSessions = sessions.filter((s) => s.type === "dribbling");
   const totalMakes = shootingSessions.reduce((a, s) => a + s.makes, 0);
@@ -1662,7 +1674,7 @@ function renderProfileCard() {
     <div class="section-label" style="margin:0 0 10px">Player Context</div>
     <div style="font-size:12px;color:var(--gray);margin-bottom:12px;line-height:1.5">A few lines about the player — position, height, what her team coach is working on, anything in season right now. The AI note reads this, so the more it knows the less generic the advice.</div>
     <div class="field">
-      <textarea class="input" id="f-profile" rows="4" style="resize:vertical;line-height:1.5" placeholder="e.g. 14U point guard, 5'4&quot;, plays up an age group. Team coach wants her creating off the dribble. Travel season through November." oninput="updateProfile(this.value)">${state.profile}</textarea>
+      <textarea class="input" id="f-profile" rows="4" style="resize:vertical;line-height:1.5" placeholder="e.g. 14U point guard, 5'4&quot;, plays up an age group. Team coach wants her creating off the dribble. Travel season through November." oninput="updateProfile(this.value)">${esc(state.profile)}</textarea>
     </div>
   </div>`;
 }
@@ -1672,7 +1684,7 @@ function renderSyncCard() {
     <div style="font-size:12px;color:var(--gray);margin-bottom:12px;line-height:1.5">Connect your Railway API so data syncs across every device, not just this browser.</div>
     <div class="field" style="margin-bottom:10px">
       <label>API URL</label>
-      <input class="input" id="f-api-base" type="text" placeholder="https://your-app.up.railway.app" value="${state.apiBase}" />
+      <input class="input" id="f-api-base" type="text" placeholder="https://your-app.up.railway.app" value="${esc(state.apiBase)}" />
     </div>
     <div class="field" style="margin-bottom:12px">
       <label>Sync PIN (if set on server)</label>
@@ -1784,11 +1796,11 @@ function renderDashboard() {
     <div class="hero-track" id="hero-track" onscroll="onHeroScroll()">
       ${slides.map((s) => `<div class="hero-slide">
         <div class="hero-value">${s.value}${s.suffix ? `<span class="hero-suffix">${s.suffix}</span>` : ""}</div>
-        <div class="hero-label">${s.label}</div>
+        <div class="hero-label">${esc(s.label)}</div>
         <div class="hero-sub">${s.sub || ""}</div>
       </div>`).join("")}
     </div>
-    ${slides.length > 1 ? `<div class="hero-dots">${slides.map((s, i) => `<button class="hero-dot${i === 0 ? " active" : ""}" onclick="goHeroSlide(${i})" aria-label="${s.label}"></button>`).join("")}</div>` : ""}
+    ${slides.length > 1 ? `<div class="hero-dots">${slides.map((s, i) => `<button class="hero-dot${i === 0 ? " active" : ""}" onclick="goHeroSlide(${i})" aria-label="${esc(s.label)}"></button>`).join("")}</div>` : ""}
     <div class="hero-row">
       <div class="hero-stat"><div class="hero-stat-v">${d.shootingSessions.length}</div><div class="hero-stat-l">Sessions</div></div>
       <div class="hero-stat"><div class="hero-stat-v">${totalShots}</div><div class="hero-stat-l">Shots</div></div>
@@ -1838,20 +1850,20 @@ function renderDashboard() {
         <div class="insight-title" style="margin:0">✨ AI Coach's Note</div>
         <button class="btn-link" style="font-size:10.5px" ${state.coachLoading ? "disabled" : ""} onclick="refreshCoachNote(true)">${state.coachLoading ? "Analyzing…" : "Refresh"}</button>
       </div>
-      <div class="insight-text" style="margin-bottom:10px">${note.summary}</div>
-      ${note.progress ? `<div style="font-size:12.5px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Since last note</strong>${note.progress}</div>` : ""}
-      ${note.focus ? `<div style="font-size:12.5px;color:var(--ink);background:#fdf1e6;border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${note.focus}</div>` : ""}
+      <div class="insight-text" style="margin-bottom:10px">${esc(note.summary)}</div>
+      ${note.progress ? `<div style="font-size:12.5px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Since last note</strong>${esc(note.progress)}</div>` : ""}
+      ${note.focus ? `<div style="font-size:12.5px;color:var(--ink);background:#fdf1e6;border-left:3px solid var(--orange);padding:8px 10px;border-radius:0 7px 7px 0;margin-bottom:10px;line-height:1.45"><strong>Focus next:</strong> ${esc(note.focus)}</div>` : ""}
       ${Array.isArray(note.plan) && note.plan.length ? `<div style="width:100%;margin-bottom:10px">
         <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Next practice</div>
-        ${note.plan.map((p) => `<div style="font-size:12.5px;color:var(--ink);line-height:1.45;margin-bottom:7px;padding-left:10px;border-left:2px solid var(--navy-line)"><strong>${p.drill}</strong> — ${p.target}${p.why ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-top:2px">${p.why}</div>` : ""}</div>`).join("")}
+        ${note.plan.map((p) => `<div style="font-size:12.5px;color:var(--ink);line-height:1.45;margin-bottom:7px;padding-left:10px;border-left:2px solid var(--navy-line)"><strong>${esc(p.drill)}</strong> — ${esc(p.target)}${p.why ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-top:2px">${esc(p.why)}</div>` : ""}</div>`).join("")}
       </div>` : ""}
-      ${note.dataGaps ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.45;margin-bottom:10px"><strong>Worth checking:</strong> ${note.dataGaps}</div>` : ""}
-      ${note.benchmarks ? `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${note.benchmarks}</div>` : ""}
+      ${note.dataGaps ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.45;margin-bottom:10px"><strong>Worth checking:</strong> ${esc(note.dataGaps)}</div>` : ""}
+      ${note.benchmarks ? `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-bottom:10px"><strong style="color:var(--gray);font-size:10.5px;text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:3px">Where this sits</strong>${esc(note.benchmarks)}</div>` : ""}
       ${note.goals && (note.goals.shots || note.goals.dribbleMinutes) ? `
         <div style="width:100%;border-top:1px solid var(--navy-line);padding-top:10px">
           <div style="font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Suggested next week</div>
           <div style="font-size:12.5px;color:var(--ink);margin-bottom:3px">${note.goals.shots || state.goals.shots} shots · ${note.goals.dribbleMinutes || state.goals.dribbleMinutes} DribbleUp min</div>
-          ${note.goals.rationale ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-bottom:8px">${note.goals.rationale}</div>` : ""}
+          ${note.goals.rationale ? `<div style="font-size:11.5px;color:var(--gray);line-height:1.4;margin-bottom:8px">${esc(note.goals.rationale)}</div>` : ""}
           <button class="btn-ghost" style="padding:7px 13px;font-size:11.5px" onclick="applySuggestedGoals()">Use these goals</button>
         </div>` : ""}
       ${noteStale ? `<div style="font-size:11px;color:var(--gray);margin-top:9px;width:100%">New sessions logged since this was written — tap Refresh to update.</div>` : ""}
@@ -1967,7 +1979,7 @@ function renderDashboard() {
     html += `<div class="card">
       <div class="chart-title" style="padding:0 0 8px">By Shot Type</div>
       ${d.shotTypes.map((t) => `<div class="trend-row">
-        <span class="trend-label">${t.shotType}<span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">${t.makes}/${t.attempts} over ${t.sessions} session${t.sessions === 1 ? "" : "s"}</span></span>
+        <span class="trend-label">${esc(t.shotType)}<span style="font-size:10.5px;color:var(--gray);display:block;margin-top:1px">${t.makes}/${t.attempts} over ${t.sessions} session${t.sessions === 1 ? "" : "s"}</span></span>
         <span class="trend-value">${t.pct}%</span>
       </div>`).join("")}
     </div>`;
@@ -1976,7 +1988,7 @@ function renderDashboard() {
     html += `<div class="card">
       <div class="chart-title" style="padding:0 0 4px">Badges Earned</div>
       <div style="font-size:11px;color:var(--gray);margin-bottom:10px">Best grade achieved for each, across all sessions.</div>
-      <div>${d.badgeList.map((b) => `<span class="badge-chip">${b.grade ? `<span class="badge-grade">${b.grade}</span>` : ""}${b.name}${b.count > 1 ? `<span class="badge-zone">×${b.count}</span>` : ""}</span>`).join("")}</div>
+      <div>${d.badgeList.map((b) => `<span class="badge-chip">${b.grade ? `<span class="badge-grade">${esc(b.grade)}</span>` : ""}${esc(b.name)}${b.count > 1 ? `<span class="badge-zone">×${b.count}</span>` : ""}</span>`).join("")}</div>
     </div>`;
   }
 
@@ -2051,7 +2063,7 @@ function renderDashboard() {
       <div class="chart-title" style="padding:0 0 10px">Dribbling by Drill</div>
       ${d.drillStats.map((drill) => `
         <div class="trend-row">
-          <span class="trend-label">${drill.drillName}</span>
+          <span class="trend-label">${esc(drill.drillName)}</span>
           <span style="text-align:right">
             <span class="trend-value">${drill.points} pts</span>
             <span style="font-size:11px;color:var(--gray);display:block;margin-top:1px">${drill.reps} reps · ${drill.sessions} ${drill.sessions === 1 ? "session" : "sessions"}</span>
@@ -2086,7 +2098,7 @@ function renderDashboard() {
   html += `<div class="section-label">Session Log</div>`;
   const sortedDesc = [...state.sessions].sort((a, b) => b.date.localeCompare(a.date));
   for (const s of sortedDesc) {
-    const title = s.type === "shooting" ? s.label : s.drillName;
+    const title = esc(s.type === "shooting" ? s.label : s.drillName);
     const sub = s.type === "shooting"
       ? `${s.makes}/${s.attempts} (${s.attempts > 0 ? Math.round((s.makes / s.attempts) * 100) : 0}%)${s.swishes != null && s.attempts > 0 ? ` · ${Math.round((s.swishes / s.attempts) * 1000) / 10}% swish` : ""}`
       : `${s.points} pts · ${s.reps} reps`;
@@ -2098,14 +2110,14 @@ function renderDashboard() {
       if (s.shotArc != null) bits.push(`arc ${s.shotArc}%`);
       if (s.intensity != null) bits.push(`intensity ${s.intensity}%`);
       if (s.duration != null) bits.push(`${s.duration} min`);
-      if (s.shotForm) bits.push(s.shotForm.toLowerCase());
+      if (s.shotForm) bits.push(esc(s.shotForm.toLowerCase()));
       if (bits.length) mechLine = `<div style="font-size:11px;color:var(--gray);opacity:0.75;margin-top:3px">${bits.join(" · ")}</div>`;
     }
     html += `<div class="session-row">
       <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}${
         s.type === "shooting" && ((s.closeAttempts || 0) + (s.midAttempts || 0)) > 0
           ? `<button class="btn-link" style="margin-top:5px;padding:0" onclick="swapSessionZones('${s.id}')">⇅ Swap Close / Mid</button>` : ""
-      }${s.notes ? `<div style="font-size:12px;color:var(--ink-2);margin-top:5px;line-height:1.4">${s.notes}</div>` : ""}</div>
+      }${s.notes ? `<div style="font-size:12px;color:var(--ink-2);margin-top:5px;line-height:1.4">${esc(s.notes)}</div>` : ""}</div>
       <span style="display:flex;gap:2px;flex-shrink:0">
       <button class="del-btn" onclick="startEdit('${s.id}')" aria-label="Edit session"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       <button class="del-btn" onclick="handleDelete('${s.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
@@ -2449,7 +2461,7 @@ function renderLogForm() {
 
   html += `<div class="row">
     ${fieldHtml("Date", `<input class="input" id="f-date" type="date" value="${state.date}" max="${todayStr()}" oninput="updateDate(this.value)" />`)}
-    ${fieldHtml("Notes (optional)", `<textarea class="input" id="f-notes" rows="2" style="resize:vertical;line-height:1.45" placeholder="Anything the numbers miss — outdoor, tired, first session back, new drill." oninput="updateNotes(this.value)">${state.notes || ""}</textarea>`)}
+    ${fieldHtml("Notes (optional)", `<textarea class="input" id="f-notes" rows="2" style="resize:vertical;line-height:1.45" placeholder="Anything the numbers miss — outdoor, tired, first session back, new drill." oninput="updateNotes(this.value)">${esc(state.notes)}</textarea>`)}
     ${fieldHtml("Time", `<input class="input" id="f-time" type="time" value="${state.time}" oninput="updateTime(this.value)" />`)}
   </div>`;
 
@@ -2507,7 +2519,7 @@ function renderLogForm() {
     if (Array.isArray(s.badges) && s.badges.length) {
       html += `<div class="field">
         <label>Badges captured <span class="field-tag read">scanned</span></label>
-        <div style="margin-top:4px">${s.badges.map((b) => `<span class="badge-chip">${b.grade ? `<span class="badge-grade">${b.grade}</span>` : ""}${b.name}${b.zone ? `<span class="badge-zone">${b.zone}</span>` : ""}</span>`).join("")}</div>
+        <div style="margin-top:4px">${s.badges.map((b) => `<span class="badge-chip">${b.grade ? `<span class="badge-grade">${esc(b.grade)}</span>` : ""}${esc(b.name)}${b.zone ? `<span class="badge-zone">${b.zone}</span>` : ""}</span>`).join("")}</div>
         <button type="button" class="btn-link" style="margin-top:4px" onclick="updateShooting('badges', [])">Clear badges</button>
       </div>`;
     }
