@@ -24,6 +24,7 @@ is already installed, or `TEST_BASE_URL` to serve from somewhere else.
 | `improve.test.mjs` | Offline rendering, pace tracking, zone swap, session notes, synced prefs |
 | `look.test.mjs` | Self-hosted fonts load without touching the network, the log form's layout, the empty state |
 | `notify.test.mjs` | The four notification-permission outcomes, including an iPhone in a Safari tab |
+| `ui.test.mjs` | Calendar dates leading into the log, the shot-form chip, and the toast states |
 | `contrast.mjs` | Every rendered text node against its effective background, at WCAG AA |
 
 ## Notes
