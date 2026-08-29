@@ -165,7 +165,14 @@
   }
   .session-title { font-size: 14.5px; font-weight: 700; color: var(--ink); }
   .session-sub { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
-  .del-btn { background:none; border:none; color: var(--ink-2); cursor:pointer; padding: 6px; }
+  /* Each reading wraps as a unit, so a line break can no longer strand a
+     separator, and a flagged one is visibly held at arm's length. */
+  .mech-line { display: flex; flex-wrap: wrap; gap: 3px 10px; margin-top: 4px; }
+  .mech-bit { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+  /* The strike carries the meaning; the colour only has to stay readable,
+     which var(--line) was not at 1.17:1. */
+  .mech-bit.shaky { color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--red); text-decoration-thickness: 1px; }
+  .del-btn { background:none; border:none; color: var(--ink-2); cursor:pointer; padding: 6px; font-size: 15px; line-height: 1; }
   /* Section headings are large and plain rather than small grey capitals. */
   .section-label { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink);
     text-transform: none; margin: 26px 0 12px; }
@@ -185,6 +192,40 @@
   .tab-btn { flex: 1; background: none; border: none; padding: 10px 0; cursor: pointer; color: var(--ink-2);
     display:flex; flex-direction:column; align-items:center; gap:3px; border-radius: 999px; }
   .tab-btn.active { color: var(--ink); background: var(--surface); }
+  /* Feedback on press, everywhere. Hover only where a pointer exists. */
+  .btn-primary, .btn-ghost, .seg-btn, .btn-link, .del-btn, .tab-btn,
+  .reminder-toggle, .cal-nav-btn, .hero-dot, .badge-chip {
+    transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease,
+                transform 0.06s ease, opacity 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-primary:active { background: #303030; transform: scale(0.985); }
+  .btn-ghost:active, .seg-btn:not(.active):active, .cal-nav-btn:active { background: var(--surface); transform: scale(0.985); }
+  .seg-btn.active:active { background: #303030; transform: scale(0.985); }
+  .btn-link:active, .reminder-toggle:active { opacity: 0.55; }
+  .del-btn:active { background: var(--surface-2); border-radius: 8px; }
+  .tab-btn:active { transform: scale(0.97); }
+  .hero-dot:active { transform: scale(1.35); }
+  @media (hover: hover) {
+    .btn-primary:hover { background: #262626; }
+    .btn-ghost:hover, .cal-nav-btn:hover { background: var(--surface); border-color: var(--ink-2); }
+    .seg-btn:not(.active):hover { border-color: var(--ink-2); color: var(--ink); }
+    .btn-link:hover, .reminder-toggle:hover { color: var(--ink); }
+    .del-btn:hover { color: var(--ink); background: var(--surface-2); border-radius: 8px; }
+    .tab-btn:not(.active):hover { color: var(--ink); }
+    .hero-dot:not(.active):hover { background: var(--ink-2); }
+  }
+  /* Keyboard users get the same affordance as pointer users. */
+  .btn-primary:focus-visible, .btn-ghost:focus-visible, .seg-btn:focus-visible,
+  .btn-link:focus-visible, .del-btn:focus-visible, .tab-btn:focus-visible,
+  .reminder-toggle:focus-visible, .cal-nav-btn:focus-visible, .hero-dot:focus-visible {
+    outline: 2px solid var(--ink); outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-primary, .btn-ghost, .seg-btn, .btn-link, .del-btn, .tab-btn,
+    .reminder-toggle, .cal-nav-btn, .hero-dot, .badge-chip { transition: none; }
+    .btn-primary:active, .btn-ghost:active, .seg-btn:active, .tab-btn:active, .hero-dot:active { transform: none; }
+  }
   .toast { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; font-weight:700; font-size:13px; padding: 11px 20px; border-radius: 999px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 50; max-width: 86vw; text-align:center; }
   .toast.show { opacity: 1; }
   .cal-nav-btn { background:none; border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--ink); cursor:pointer; }
@@ -2171,21 +2212,28 @@ function renderDashboard() {
       : `${s.points} pts · ${s.reps} reps`;
     let mechLine = "";
     if (s.type === "shooting") {
+      const suspect = new Set(d.suspectMechanics);
       const bits = [];
-      if (s.spinRate != null) bits.push(`spin ${s.spinRate}%`);
-      if (s.releaseTime != null) bits.push(`release ${s.releaseTime}%`);
-      if (s.shotArc != null) bits.push(`arc ${s.shotArc}%`);
-      if (s.intensity != null) bits.push(`intensity ${s.intensity}%`);
-      if (s.duration != null) bits.push(`${s.duration} min`);
-      if (s.shotForm) bits.push(esc(s.shotForm.toLowerCase()));
-      if (bits.length) mechLine = `<div style="font-size:11px;color:var(--gray);opacity:0.75;margin-top:3px">${bits.join(" · ")}</div>`;
+      const add = (label, value, metric) => {
+        if (value === null || value === undefined) return;
+        const shaky = metric && suspect.has(metric);
+        bits.push(`<span class="mech-bit${shaky ? " shaky" : ""}"${shaky ? ' title="This reading looks like a capture problem — see Shot Mechanics"' : ""}>${label} ${value}${shaky ? " ?" : ""}</span>`);
+      };
+      add("spin", s.spinRate === null ? null : s.spinRate + "%", "Spin rate");
+      add("release", s.releaseTime === null ? null : s.releaseTime + "%", "Release time");
+      add("arc", s.shotArc === null ? null : s.shotArc + "%", "Shot arc");
+      add("intensity", s.intensity === null ? null : s.intensity + "%", "Intensity");
+      if (s.duration != null) bits.push(`<span class="mech-bit">${s.duration} min</span>`);
+      if (s.shotForm) bits.push(`<span class="mech-bit">${esc(s.shotForm.toLowerCase())}</span>`);
+      if (bits.length) mechLine = `<div class="mech-line">${bits.join("")}</div>`;
     }
     html += `<div class="session-row">
       <div><div class="session-title">${title}</div><div class="session-sub">${fmtShort(s.date)}${s.time ? ` · ${fmtTime(s.time)}` : ""} · ${sub}</div>${mechLine}${
-        s.type === "shooting" && ((s.closeAttempts || 0) + (s.midAttempts || 0)) > 0
-          ? `<button class="btn-link" style="margin-top:5px;padding:0" onclick="swapSessionZones('${s.id}')">⇅ Swap Close / Mid</button>` : ""
-      }${s.notes ? `<div style="font-size:12px;color:var(--ink-2);margin-top:5px;line-height:1.4">${esc(s.notes)}</div>` : ""}</div>
+        s.notes ? `<div style="font-size:12px;color:var(--ink-2);margin-top:5px;line-height:1.4">${esc(s.notes)}</div>` : ""
+      }</div>
       <span style="display:flex;gap:2px;flex-shrink:0">
+      ${s.type === "shooting" && ((s.closeAttempts || 0) + (s.midAttempts || 0)) > 0
+        ? `<button class="del-btn" onclick="swapSessionZones('${s.id}')" title="Swap this session's Close and Mid" aria-label="Swap Close and Mid for this session">⇅</button>` : ""}
       <button class="del-btn" onclick="startEdit('${s.id}')" aria-label="Edit session"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       <button class="del-btn" onclick="handleDelete('${s.id}')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
       </span>

@@ -109,6 +109,62 @@ async function open({ offline=false, empty=false } = {}) {
   }));
   await ctx.close();
 }
+// --- Session rows: readings wrap as units, flagged ones are marked ---------
+{
+  const { p, ctx } = await open();
+  const bits = await p.evaluate(() => {
+    const row = document.querySelector(".mech-line");
+    return { count: row.children.length,
+             wrap: getComputedStyle(row).flexWrap,
+             shaky: [...row.querySelectorAll(".shaky")].map(e => e.textContent.trim()),
+             // A separator baked into the text is what strands a dot at a wrap.
+             hasBakedSeparators: /·/.test(row.textContent) };
+  });
+  check("each reading is its own element", bits.count >= 5, bits.count);
+  check("the line wraps as units", bits.wrap === "wrap", bits.wrap);
+  check("no separator characters left in the text", !bits.hasBakedSeparators, bits.hasBakedSeparators);
+  check("the flagged reading is marked in the row too", bits.shaky.some(t => /release/.test(t)), bits.shaky);
+  check("only the flagged metric is marked", bits.shaky.length === 1, bits.shaky);
+  await ctx.close();
+}
+// --- The swap moved in with edit and delete --------------------------------
+{
+  const { p, ctx } = await open();
+  check("no underlined swap link under the rows",
+    await p.evaluate(() => ![...document.querySelectorAll(".btn-link")].some(b => /Swap/i.test(b.textContent))));
+  const swap = p.locator('button[aria-label^="Swap Close"]').first();
+  check("swap is an icon button beside the others", await swap.count() === 1);
+  const newest = await p.evaluate(()=>{const x=[...state.sessions].sort((a,b)=>b.date.localeCompare(a.date))[0];
+    return {id:x.id,c:x.closeAttempts,m:x.midAttempts};});
+  await swap.click(); await p.waitForTimeout(400);
+  const after = await p.evaluate(id=>{const x=state.sessions.find(y=>y.id===id); return {c:x.closeAttempts,m:x.midAttempts};}, newest.id);
+  check("it still swaps from its new home", after.c === newest.m && after.m === newest.c, {newest, after});
+  await ctx.close();
+}
+// --- Controls acknowledge a press ------------------------------------------
+{
+  const { p, ctx } = await open();
+  const states = await p.evaluate(() => {
+    // Chromium supports nested CSS, so a plain style rule now exposes an empty
+    // (but truthy) cssRules list. Recursing on that alone drops every
+    // top-level rule, so walk explicitly and keep the rule itself.
+    const flat = [];
+    const walk = (rules) => { for (const r of rules) { flat.push(r); if (r.media || r.conditionText) walk(r.cssRules || []); } };
+    for (const sheet of document.styleSheets) { try { walk(sheet.cssRules); } catch { /* cross-origin */ } }
+    const selectors = flat.map(r => r.selectorText || "").join(" ");
+    return {
+      active: [".btn-primary:active", ".btn-ghost:active", ".tab-btn:active", ".del-btn:active"].filter(s => selectors.includes(s)),
+      focus: selectors.includes(":focus-visible"),
+      hoverGuarded: flat.some(r => r.media && /hover/.test(r.media.mediaText)),
+      reducedMotion: flat.some(r => r.media && /prefers-reduced-motion/.test(r.media.mediaText)),
+    };
+  });
+  check("primary, ghost, tab and icon buttons all have a pressed state", states.active.length === 4, states.active);
+  check("keyboard focus is visible", states.focus);
+  check("hover is behind a pointer query, so touch doesn't stick", states.hoverGuarded);
+  check("motion is dropped for people who ask for that", states.reducedMotion);
+  await ctx.close();
+}
 // --- Empty state -----------------------------------------------------------
 {
   const { p, ctx, errs } = await open({ empty:true });
