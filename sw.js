@@ -1,11 +1,11 @@
-const CACHE_NAME = "shootingiq-v3";
+const CACHE_NAME = "shootingiq-v4";
 const FONTS = [
   "./fonts/barlow-condensed-italic-800-latin.woff2", "./fonts/barlow-condensed-italic-800-latin-ext.woff2",
   "./fonts/barlow-condensed-700-latin.woff2", "./fonts/barlow-condensed-700-latin-ext.woff2",
   "./fonts/inter-latin.woff2", "./fonts/inter-latin-ext.woff2",
 ];
 const APP_SHELL = ["./", "./index.html", "./chart.umd.min.js", "./manifest.json",
-                   "./icon-192.png", "./icon-512.png", ...FONTS];
+                   "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png", ...FONTS];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

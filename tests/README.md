@@ -12,6 +12,7 @@ is already installed, or `TEST_BASE_URL` to serve from somewhere else.
 
 | Suite | Covers |
 |---|---|
+| `icon.test.mjs` | Icons exist at their declared sizes, and manifest, HTML and service worker agree |
 | `test.mjs` | `apiFetch` error handling — status codes, `{"error":…}` unwrapping, the 502 retry |
 | `hang.mjs` | A hanging request is really aborted, with status 408 |
 | `payload.test.mjs` | `buildCoachPayload` — zone maths, mechanics latest-vs-prior, JSON-safety |
