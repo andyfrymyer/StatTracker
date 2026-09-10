@@ -1,4 +1,5 @@
 import { P, BASE, CHROMIUM } from "./lib/env.mjs";
+import { shiftIntoThisMonth, thisMonthDates } from "./lib/fixture.mjs";
 import fs from "fs";
 import { chromium } from "playwright";
 const lines = fs.readFileSync(P("fixtures/sessions.csv"),"utf8").trim().split("\n").slice(1);
@@ -6,8 +7,12 @@ const n = v => (v===""||v===undefined)?null:Number(v);
 const sessions = lines.map((l,i)=>{const r=l.split(",");return {id:"s"+i,type:"shooting",date:r[0],time:r[1],label:r[3],attempts:n(r[4]),makes:n(r[5]),swishes:n(r[6]),closeAttempts:n(r[7]),closeMakes:n(r[8]),closeSwishes:n(r[9]),midAttempts:n(r[10]),midMakes:n(r[11]),midSwishes:n(r[12]),longAttempts:n(r[13]),longMakes:n(r[14]),longSwishes:n(r[15]),spinRate:n(r[16]),releaseTime:n(r[17]),shotArc:n(r[18]),intensity:n(r[19]),duration:n(r[20]),shotForm:r[21],shotType:r[22],badges:null};});
 let pass=0, fail=0;
 const check=(nm,c,x)=>{ c?(pass++,console.log("  ok  "+nm)):(fail++,console.log("FAIL  "+nm,x??"")); };
+const shifted = shiftIntoThisMonth(sessions);
+sessions.length = 0; sessions.push(...shifted);
+const marked = thisMonthDates(sessions);
 const sessions_ids = sessions.map(s => s.id);
 const sessions_dates = sessions.map(s => s.date);
+const newest = sessions_dates[sessions_dates.length - 1];
 const b = await chromium.launch({ executablePath: CHROMIUM });
 const ctx = await b.newContext({ viewport:{width:430,height:900} });
 const p = await ctx.newPage();
@@ -18,7 +23,7 @@ await p.waitForTimeout(1400);
 
 // --- Calendar dates lead into the log --------------------------------------
 const practised = p.locator("button.cal-day.practiced");
-check("only practised days are buttons", await practised.count() === 3, await practised.count());
+check("only practised days are buttons", await practised.count() === marked.length, [await practised.count(), marked]);
 check("plain days stay unfocusable text", await p.locator("div.cal-day:not(.practiced)").count() > 20);
 check("each has a label naming its date",
   (await practised.first().getAttribute("aria-label") || "").includes("session on"), await practised.first().getAttribute("aria-label"));
@@ -28,7 +33,7 @@ await p.waitForTimeout(600);
 const opened = await p.evaluate(() => state.viewingId);
 check("tapping a date opens that session", !!opened, opened);
 check("it opens the right one",
-  opened === sessions_ids[sessions_dates.indexOf("2026-08-27")], opened);
+  opened === sessions_ids[sessions_dates.lastIndexOf(newest)], opened);
 await p.evaluate(() => closeSession());
 await p.waitForTimeout(300);
 
