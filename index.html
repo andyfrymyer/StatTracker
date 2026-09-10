@@ -292,7 +292,7 @@
   .cal-day.today:not(.practiced) { border: 1.5px solid var(--orange); font-weight:700; }
   button.cal-day { border: none; cursor: pointer; font-family: inherit; padding: 0; }
   button.cal-day.today { border: 1.5px solid var(--orange); }
-  /* Shot form is a label DribbleUp assigns, not a figure — it was carrying
+  /* Shot form is a label the shooting app assigns, not a figure — it was carrying
      more weight than the percentages beside it. */
   /* --ink-2 lands at 4.47:1 on this fill, just under the 4.5 small text needs. */
   .form-chip { font-size: 12px; font-weight: 700; color: #636363; background: var(--surface-2);
@@ -1742,8 +1742,9 @@ function computeDerived() {
   const lastMonth = monthlyList.find((m) => m.month === lastMonthKey) || { attempts: 0, makes: 0, points: 0, reps: 0, dribbleMin: 0, shootingPct: null };
 
   // --- Shot mechanics (spin rate, release time, shot arc, intensity) ---
-  // These come from DribbleUp's shootaround summary — shooting metrics, not
-  // anything to do with the dribbling drills — and were not surfaced anywhere.
+  // These come from the shootaround summary in her shooting app, and were not
+  // surfaced anywhere. The dribbling classes are a different app entirely and
+  // report none of them, so nothing here is ever a handling metric.
   // Show the latest value plus how it compares to the average of prior sessions.
   const mechKeys = ["spinRate", "releaseTime", "shotArc", "intensity"];
   const mechLabels = { spinRate: "Spin rate", releaseTime: "Release time", shotArc: "Shot arc", intensity: "Intensity" };
@@ -1865,7 +1866,7 @@ function computeDerived() {
       conflicting: new Set(g.map((s) => `${s.closeAttempts}|${s.midAttempts}|${s.longAttempts}`)).size > 1,
     }));
 
-  // DribbleUp reports a shot type per session; nothing aggregated it before, so
+  // The shooting app reports a shot type per session; nothing aggregated it before, so
   // "catch & shoot days go worse than relaxed days" was invisible.
   const typeMap = {};
   for (const s of shootingSessions) {
@@ -2173,7 +2174,7 @@ function renderDashboard() {
         <div style="border-top:1px solid var(--line);padding-top:18px">
           <div style="font-size:17px;font-weight:800;letter-spacing:-0.02em;color:var(--ink);margin-bottom:10px">What you'll get</div>
           ${[
-            ["Screenshot a DribbleUp session?", "Import it and the numbers fill themselves in — including the shots-by-distance popup."],
+            ["Screenshot of a session?", "Import it and the numbers fill themselves in — either app, including the shots-by-distance popup."],
             ["Zone and shot-type splits", "Where the points are actually going: close against mid, relaxed against catch &amp; shoot."],
             ["An AI coach's note", "Reads every session and answers with drills and rep counts, not a paragraph of encouragement."],
           ].map(([t, b]) => `<div style="margin-bottom:14px">
@@ -2455,7 +2456,7 @@ function renderDashboard() {
     }
     if (d.suspectMechanics.length) {
       html += `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-top:10px">
-        <strong style="color:var(--ink)">Worth checking:</strong> ${d.suspectMechanics.join(" and ")} never rose above 1% in any session logged. That is more often a screenshot the parser could not read than a real result — compare one against the shootaround summary screen in DribbleUp before coaching to it.
+        <strong style="color:var(--ink)">Worth checking:</strong> ${d.suspectMechanics.join(" and ")} never rose above 1% in any session logged. That is more often a screenshot the parser could not read than a real result — compare one against the shootaround summary in your shooting app before coaching to it.
       </div>`;
     }
     if (d.latestForm) {
@@ -2593,7 +2594,7 @@ function flattenOcrText(text) {
 
 // Parses the "Shots by distance" popup: three stacked bars labelled
 // Close-range / Mid-range / Long-range, each with an "N shots" total and
-// Swish% / Make% bands. Note: in DribbleUp's model the Make band EXCLUDES
+// Swish% / Make% bands. Note: in the shooting app's model the Make band EXCLUDES
 // swishes, so makes and swishes are stored as separate counts.
 function parseZoneScreenshot(flat, targetMakes) {
   // What OCR reliably gives us from the "Shots by distance" popup:
@@ -2670,7 +2671,7 @@ function parseZoneScreenshot(flat, targetMakes) {
 
   if (bars.length >= 3) {
     assign("long", longBar);
-    // Guess: DribbleUp draws Close, Mid, Long left-to-right, and mid-range
+    // Guess: the shooting app draws Close, Mid, Long left-to-right, and mid-range
     // volume usually exceeds close-range in these sessions — but this is the
     // ambiguous part, flagged below so the user can flip it.
     assign("close", bigBars[0]);
@@ -2919,7 +2920,7 @@ function renderLogForm() {
   html += `<div class="import-card">
     <input type="file" id="f-screenshot" accept="image/*" multiple style="display:none" onchange="handleScreenshotImport(this)" ${state.ocrBusy ? "disabled" : ""} />
     <button class="btn-primary" style="width:100%" ${state.ocrBusy ? "disabled" : ""} onclick="document.getElementById('f-screenshot').click()">${state.ocrBusy ? `<span class="spin"></span>Reading…` : "Import from screenshot"}</button>
-    <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : (visionAvailable === true ? "✨ AI vision reading — most accurate. Pick one or both screens." : "Pick one or both DribbleUp screens at once — stats and &quot;Shots by distance&quot;")}</div>
+    <div class="import-status">${state.ocrBusy ? `<span class="spin"></span>${state.ocrStatus}` : (visionAvailable === true ? "✨ AI vision reading — most accurate. Pick one or both screens." : "Pick one or both shooting screens at once — stats and &quot;Shots by distance&quot;")}</div>
     ${state.lastOcrRaw ? `
       <button class="btn-link" style="margin-top:10px" onclick="toggleOcrDebug()">${state.showOcrDebug ? "Hide" : "Show"} raw OCR text (debug)</button>
       ${state.showOcrDebug ? `
