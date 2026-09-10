@@ -1259,6 +1259,18 @@ async function postCoachNote(payload) {
 }
 // One generic message for every failure made a wrong PIN, a rate limit and a
 // server-side AI error impossible to tell apart from the phone.
+// The same statuses mean something different when a screenshot is being read
+// rather than a coach note written, and this one lands mid-sentence in the
+// import toast, so it stays short.
+function visionErrorText(e) {
+  const status = e && e.status;
+  const detail = String((e && e.message) || "").trim();
+  if (status === 503) return "AI vision isn't set up on the server";
+  if (status === 401) return "AI vision rejected the PIN";
+  if (status === 408) return "AI vision timed out";
+  if (status === 0) return "couldn't reach the server";
+  return detail || "AI vision failed";
+}
 function coachErrorText(e) {
   const status = e && e.status;
   const detail = String((e && e.message) || "").trim();
@@ -1367,7 +1379,7 @@ window.handleScreenshotImport = async function (input) {
 
   const summary = { shooting: 0, zones: 0, dribbling: 0, unknown: 0 };
   let sawShooting = false, sawZones = false, swapped = false, lowConf = false;
-  let usedVision = false, visionFellBack = false, sawBadges = false;
+  let usedVision = false, visionFellBack = false, sawBadges = false, visionError = null;
   const rawTexts = [];
 
   try {
@@ -1396,6 +1408,9 @@ window.handleScreenshotImport = async function (input) {
           continue;
         } catch (err) {
           // Fall through to Tesseract for this file rather than failing outright.
+          // The reason is kept: without it the toast said the import had fallen
+          // back but not why, so a server-side failure looked like a bad photo.
+          if (!visionError) visionError = visionErrorText(err);
           if (typeof Tesseract === "undefined") { summary.unknown++; continue; }
           visionFellBack = true;
         }
@@ -1476,7 +1491,7 @@ window.handleScreenshotImport = async function (input) {
       if (summary.dribbling) parts.push("dribbling session");
       if (sawBadges) parts.push(`${summary.badges} badge${summary.badges === 1 ? "" : "s"}`);
       const skipped = summary.unknown ? ` (${summary.unknown} not recognized)` : "";
-      if (visionFellBack) parts.push("(fell back to basic OCR)");
+      if (visionFellBack) parts.push(`(${visionError || "AI vision unavailable"} — used basic OCR)`);
       showToast(swapped
         ? `Imported ${parts.join(" + ")} — attempts/makes looked swapped, double-check!`
         : `Imported ${parts.join(" + ")}${skipped} — review before logging`);
@@ -2709,7 +2724,7 @@ function detectScreenshotType(flat) {
   const hasDribbleWords = /\bpts\b/i.test(flat) && /\breps\b/i.test(flat);
   const hasRecapWords = /Retake\s+Class/i.test(flat)
     || /Class\s+Rank/i.test(flat)
-    || (/Total\s+Reps/i.test(flat) && /Total\s+Points/i.test(flat));
+    || (/Total\s+Reps/i.test(flat) && /Total\s+Poin/i.test(flat));
   if (hasShootingWords) return "shooting";
   if (hasDribbleWords || hasRecapWords) return "dribbling";
   return null;
@@ -2839,40 +2854,52 @@ function trimDribbleLeaderboard(flat) {
 }
 
 function parseDribbleScreenshot(full) {
-  const flat = trimDribbleLeaderboard(full);
+  const trimmed = trimDribbleLeaderboard(full);
   const out = {};
   let drillName = null;
   for (const d of KNOWN_DRILLS) {
-    if (flat.toLowerCase().includes(d.toLowerCase())) { drillName = d; break; }
+    if (trimmed.toLowerCase().includes(d.toLowerCase())) { drillName = d; break; }
   }
-  // On the recap the class name sits between the timestamp and the Retake
-  // button, so it can be read by position even when it is a class we have
-  // never seen before — the list of drills only ever grows.
+  // The class name sits between the timestamp and the first stat, so it can be
+  // read by position even when it is a class the list has never seen. Tesseract
+  // usually drops the white-on-blue Retake button entirely and leaves a couple
+  // of junk characters where each icon was, so both endings are allowed.
   if (!drillName) {
-    const m = flat.match(/(?:AM|PM)\s+([A-Za-z][A-Za-z '&\-]{2,30}?)\s+Retake\s+Class/i);
-    if (m) drillName = m[1].trim();
-  }
-  if (!drillName) {
-    const m = flat.match(/([A-Za-z][A-Za-z '\-]{2,30}?)\s+Basketball\b/i);
-    if (m) drillName = m[1].trim();
+    for (const re of [/(?:AM|PM)\s+([A-Za-z][A-Za-z '&\-]{2,30}?)\s+Retake\s+Class/i,
+                      /(?:AM|PM)\s+([A-Za-z][A-Za-z '&\-]{2,30}?)\s+\S{0,3}\s*Duration/i,
+                      /([A-Za-z][A-Za-z '\-]{2,30}?)\s+Basketball\b/i]) {
+      const m = trimmed.match(re);
+      if (m) { drillName = m[1].trim(); break; }
+    }
   }
   out.drillName = drillName;
-  // "Points Earned" heads a breakdown whose first number is the workout length,
-  // so only the explicit total is trusted on the recap.
-  out.points = firstNum(flat, [/(\d+)\s*pts\b/i, /Total\s+Points\D{0,12}?(\d+)/i]);
-  out.reps = firstNum(flat, [/(\d+)\s*reps\b/i, /Total\s+Reps\D{0,12}?(\d+)/i]);
-  // Duration is on the screen as mm:ss but the field — and the weekly goal it
-  // feeds — is whole minutes, so it had to be typed by hand every time.
+
+  // Duration is read first and then cut out of the text the other numbers are
+  // read from. Tesseract flattens the 2x2 stat grid as both labels and then
+  // both values — "Duration Total Reps 11:31 68" — so a rep count read just
+  // after its own label lands on the minutes off the clock instead. That is
+  // what put 11 in the reps field. With the clock gone the labels sit next to
+  // the numbers that belong to them.
+  let flat = trimmed;
   out.duration = null;
-  const clockM = flat.match(/Duration\D{0,8}?(\d{1,3}):(\d{2})/i);
+  // Any mm:ss that is not the session's start time. \b fails against "7:35PM"
+  // and the lookahead catches "7:35 PM", so the header clock is never taken.
+  const clockM = flat.match(/\b(\d{1,3}):(\d{2})\b(?!\s*[AP]\.?M)/i);
   if (clockM) {
-    const mins = Number(clockM[1]) + Number(clockM[2]) / 60;
-    out.duration = String(Math.max(1, Math.round(mins)));
+    out.duration = String(Math.max(1, Math.round(Number(clockM[1]) + Number(clockM[2]) / 60)));
+    flat = flat.slice(0, clockM.index) + " " + flat.slice(clockM.index + clockM[0].length);
   } else {
     const minM = flat.match(/Duration\D{0,8}?(\d{1,3})\s*min/i);
     if (minM) out.duration = minM[1];
   }
-  const dtM = flat.match(/(\w{3}),?\s*(\w{3})\s+(\d{1,2}),\s*(\d{4})\s*(?:at)?\s*(\d{1,2}):(\d{2})\s*([AP]M)/i);
+
+  // "Points Earned" heads a breakdown whose first number is the workout length,
+  // so only the explicit total is trusted — and OCR clips it to "Total Poin"
+  // often enough that the label cannot be matched in full.
+  out.points = firstNum(flat, [/(\d+)\s*pts\b/i, /Total\s+Poin\w*\D{0,12}?(\d+)/i]);
+  out.reps = firstNum(flat, [/(\d+)\s*reps\b/i, /Total\s+Reps\D{0,12}?(\d+)/i]);
+
+  const dtM = trimmed.match(/(\w{3}),?\s*(\w{3})\s+(\d{1,2}),\s*(\d{4})\s*(?:at)?\s*(\d{1,2}):(\d{2})\s*([AP]M)/i);
   if (dtM) {
     const monthIdx = MONTH_MAP[dtM[2].toLowerCase().slice(0, 3)];
     if (monthIdx !== undefined) {

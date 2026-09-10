@@ -45,6 +45,18 @@ const BUNDLES = {
 
 fs.mkdirSync(P(".build"), { recursive: true });
 for (const [name, headers] of Object.entries(BUNDLES)) {
-  fs.writeFileSync(P(".build/" + name), headers.map(block).join("\n\n"));
+  const src = headers.map(block).join("\n\n");
+  // block() counts braces without knowing about comments or strings, so a "}"
+  // inside either truncates the function mid-body. That surfaced as a syntax
+  // error deep in a suite; checking here names the function that failed.
+  try {
+    new Function(src);
+  } catch (e) {
+    const cut = headers.find((h) => { try { new Function(block(h)); return false; } catch { return true; } });
+    console.error(`${name}: extracted source does not parse — ${e.message}`);
+    console.error(`  the culprit is ${cut || "one of the bundled functions"} (a brace inside a comment or string?)`);
+    process.exit(1);
+  }
+  fs.writeFileSync(P(".build/" + name), src);
 }
 console.log("extracted", Object.keys(BUNDLES).join(" and "), "from index.html");

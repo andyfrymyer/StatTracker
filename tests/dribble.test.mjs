@@ -8,35 +8,42 @@ const M = new Function(src + "; return {flattenOcrText,detectScreenshotType,pars
 let pass = 0, fail = 0;
 const check = (n, c, x) => { c ? (pass++, console.log("  ok  " + n)) : (fail++, console.log("FAIL  " + n, x ?? "")); };
 
-// Read off the real screenshot, in the order OCR walks it.
+// Verbatim Tesseract output for the real screenshot — not a tidied-up version
+// of it. The first fixture here was written by hand from what the screen looks
+// like, and every pattern built on it passed while the app itself read the
+// duration as a rep count. OCR mangles the icons to junk, clips "Total Points"
+// to "Total Poin", drops the white-on-blue Retake button, and flattens the 2x2
+// stat grid as both labels and then both values.
 const RECAP = M.flattenOcrText(`Close
-Wed, Sep 9, 2026 at 7:35 PM
+Wed, Sep 9, 2026 at 7:35PM
 Circle Control
-Retake Class
-Duration 11:31
-Total Reps 68
-Drills 8
-Class Rank 57th
-Points Earned
-12 Minute Workout 720
-Solar Flare 360
-Total Points 1080
+Oo Duration i} Total Reps
+11:31 68
+e\u2014 Drills lo) Class Rank
+= 8 NY 57th
+Points E
+12 Mi 720
+Sola 360
+Total Poin 1080
 Class Leaderboard See All
-55th fizaan 72 reps
-56th`);
+55th
+fizaan 72 rei
+y`);
 
 check("recap is recognised as a dribbling screen", M.detectScreenshotType(RECAP) === "dribbling", M.detectScreenshotType(RECAP));
 
 const r = M.parseDribbleScreenshot(RECAP);
 check("class name is read by position", r.drillName === "Circle Control", r.drillName);
-check("reps are hers, not the leaderboard's", r.reps === "68", r.reps);
-check("points come from the total, not the first breakdown row", r.points === "1080", r.points);
+check("reps are the rep count, not the minutes off the clock", r.reps === "68", r.reps);
+check("points survive OCR clipping the label to \"Total Poin\"", r.points === "1080", r.points);
 check("duration 11:31 becomes 12 minutes", r.duration === "12", r.duration);
 check("date is the local evening, not UTC tomorrow", r.date === "2026-09-09", r.date);
 check("time is 24h", r.time === "19:35", r.time);
 
 // The specific regression: the leaderboard must be gone before any number is read.
 check("leaderboard is cut before parsing", !/fizaan/i.test(M.trimDribbleLeaderboard(RECAP)));
+check("the header clock is never mistaken for the duration", r.duration !== "8" && r.time === "19:35");
+// A cleaner OCR pass would read those rows properly, so the cut still matters.
 const twoPlayers = M.parseDribbleScreenshot(RECAP + " 57th ella 68 reps 58th mia 64 reps");
 check("more leaderboard rows still cannot leak in", twoPlayers.reps === "68", twoPlayers.reps);
 
@@ -71,6 +78,15 @@ const fromScreen = { ...r, time: r.time, date: r.date, type: "dribbling", id: "g
 const missing = stored.filter((k) => fromScreen[k] === null || fromScreen[k] === undefined);
 check("one screenshot fills every stored field", missing.length === 0, [missing, stored]);
 check("and the two required ones are among them", r.points !== null && r.reps !== null);
+
+// The same screen read cleanly — a better OCR pass, or a phone that renders the
+// labels beside their values — must parse to exactly the same session.
+const CLEAN = M.flattenOcrText("Wed, Sep 9, 2026 at 7:35 PM Circle Control Retake Class Duration 11:31 Total Reps 68 Drills 8 Class Rank 57th Points Earned 12 Minute Workout 720 Solar Flare 360 Total Points 1080 Class Leaderboard 55th fizaan 72 reps");
+const cl = M.parseDribbleScreenshot(CLEAN);
+check("a clean read gives the same reps", cl.reps === "68", cl.reps);
+check("a clean read gives the same points", cl.points === "1080", cl.points);
+check("a clean read gives the same duration", cl.duration === "12", cl.duration);
+check("a clean read still ignores the leaderboard", cl.reps !== "72", cl.reps);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
