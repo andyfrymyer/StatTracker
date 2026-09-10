@@ -1,4 +1,4 @@
-const CACHE_NAME = "shootingiq-v6";
+const CACHE_NAME = "shootingiq-v7";
 const FONTS = [
   "./fonts/barlow-condensed-italic-800-latin.woff2", "./fonts/barlow-condensed-italic-800-latin-ext.woff2",
   "./fonts/barlow-condensed-700-latin.woff2", "./fonts/barlow-condensed-700-latin-ext.woff2",
