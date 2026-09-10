@@ -20,7 +20,7 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(file).pipe(res);
 });
 
-const SUITES = ["icon.test.mjs", "test.mjs", "hang.mjs", "payload.test.mjs", "dupe.test.mjs", "escape.test.mjs",
+const SUITES = ["icon.test.mjs", "test.mjs", "hang.mjs", "payload.test.mjs", "dupe.test.mjs", "dribble.test.mjs", "escape.test.mjs",
                 "render.test.mjs", "real.render.mjs", "swipe.test.mjs", "improve.test.mjs",
                 "look.test.mjs", "notify.test.mjs", "ui.test.mjs", "note-ui.test.mjs", "dialog.test.mjs", "detail.test.mjs", "contrast.mjs"];
 // Dates are timezone-sensitive, and UTC alone hides the entire bug class.

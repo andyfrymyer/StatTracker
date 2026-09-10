@@ -1160,9 +1160,14 @@ function applyVisionResult(v) {
     if (v.drillName) state.dribbling.drillName = v.drillName;
     if (v.points !== null && v.points !== undefined) state.dribbling.points = String(v.points);
     if (v.reps !== null && v.reps !== undefined) state.dribbling.reps = String(v.reps);
+    const filledDr = ["points", "reps"];
+    if (v.durationMin !== null && v.durationMin !== undefined) {
+      state.dribbling.duration = String(v.durationMin);
+      filledDr.push("duration");
+    }
     if (v.date) state.date = v.date;
     if (v.time) state.time = v.time;
-    return { kind: "dribbling", filled: ["points", "reps"] };
+    return { kind: "dribbling", filled: filledDr };
   }
   return null;
 }
@@ -1449,6 +1454,7 @@ window.handleScreenshotImport = async function (input) {
         if (parsed.drillName) state.dribbling.drillName = parsed.drillName;
         if (parsed.points !== null) state.dribbling.points = parsed.points;
         if (parsed.reps !== null) state.dribbling.reps = parsed.reps;
+        if (parsed.duration !== null) state.dribbling.duration = parsed.duration;
         if (parsed.date) state.date = parsed.date;
         if (parsed.time) state.time = parsed.time;
         summary.dribbling++;
@@ -2579,7 +2585,7 @@ function trendRow(label, displayValue, current, previous, unit) {
 }
 
 const MONTH_MAP = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-const KNOWN_DRILLS = ["Tight Handles", "Two-Ball Series", "Cone Weave", "Live Ball Combo"];
+const KNOWN_DRILLS = ["Tight Handles", "Two-Ball Series", "Cone Weave", "Live Ball Combo", "Circle Control"];
 
 function flattenOcrText(text) {
   return text.replace(/\s+/g, " ").trim();
@@ -2695,9 +2701,16 @@ function detectScreenshotType(flat) {
   if (byDistance || (zoneHits && hasLegend)) return "zones";
 
   const hasShootingWords = /ATTEMPTS/i.test(flat) && /MAKES/i.test(flat);
+  // Two dribbling layouts are in the wild. The older card wrote its totals
+  // inline ("1080 pts", "68 reps"); the current class recap never says "pts"
+  // at all, it labels each row and puts the number after the label. Matching
+  // only the old shape meant a recap screenshot came back unrecognised.
   const hasDribbleWords = /\bpts\b/i.test(flat) && /\breps\b/i.test(flat);
+  const hasRecapWords = /Retake\s+Class/i.test(flat)
+    || /Class\s+Rank/i.test(flat)
+    || (/Total\s+Reps/i.test(flat) && /Total\s+Points/i.test(flat));
   if (hasShootingWords) return "shooting";
-  if (hasDribbleWords) return "dribbling";
+  if (hasDribbleWords || hasRecapWords) return "dribbling";
   return null;
 }
 
@@ -2805,19 +2818,59 @@ function parseShootScreenshot(flat) {
   return out;
 }
 
-function parseDribbleScreenshot(flat) {
+// Reads the first number produced by whichever pattern matches, so one call
+// can cover both the old inline card and the labelled recap rows.
+function firstNum(flat, patterns) {
+  for (const re of patterns) {
+    const m = flat.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// A class recap lists the other players underneath her stats, and those rows
+// carry their own rep counts — "55th fizaan 72 reps". Parsing the whole screen
+// read a stranger's total as hers, so everything from the leaderboard heading
+// down is cut before any number is looked for.
+function trimDribbleLeaderboard(flat) {
+  const m = flat.match(/\bClass\s+Leaderboard\b/i);
+  return m ? flat.slice(0, m.index) : flat;
+}
+
+function parseDribbleScreenshot(full) {
+  const flat = trimDribbleLeaderboard(full);
   const out = {};
   let drillName = null;
   for (const d of KNOWN_DRILLS) {
     if (flat.toLowerCase().includes(d.toLowerCase())) { drillName = d; break; }
+  }
+  // On the recap the class name sits between the timestamp and the Retake
+  // button, so it can be read by position even when it is a class we have
+  // never seen before — the list of drills only ever grows.
+  if (!drillName) {
+    const m = flat.match(/(?:AM|PM)\s+([A-Za-z][A-Za-z '&\-]{2,30}?)\s+Retake\s+Class/i);
+    if (m) drillName = m[1].trim();
   }
   if (!drillName) {
     const m = flat.match(/([A-Za-z][A-Za-z '\-]{2,30}?)\s+Basketball\b/i);
     if (m) drillName = m[1].trim();
   }
   out.drillName = drillName;
-  const ptsM = flat.match(/(\d+)\s*pts/i); out.points = ptsM ? ptsM[1] : null;
-  const repsM = flat.match(/(\d+)\s*reps/i); out.reps = repsM ? repsM[1] : null;
+  // "Points Earned" heads a breakdown whose first number is the workout length,
+  // so only the explicit total is trusted on the recap.
+  out.points = firstNum(flat, [/(\d+)\s*pts\b/i, /Total\s+Points\D{0,12}?(\d+)/i]);
+  out.reps = firstNum(flat, [/(\d+)\s*reps\b/i, /Total\s+Reps\D{0,12}?(\d+)/i]);
+  // Duration is on the screen as mm:ss but the field — and the weekly goal it
+  // feeds — is whole minutes, so it had to be typed by hand every time.
+  out.duration = null;
+  const clockM = flat.match(/Duration\D{0,8}?(\d{1,3}):(\d{2})/i);
+  if (clockM) {
+    const mins = Number(clockM[1]) + Number(clockM[2]) / 60;
+    out.duration = String(Math.max(1, Math.round(mins)));
+  } else {
+    const minM = flat.match(/Duration\D{0,8}?(\d{1,3})\s*min/i);
+    if (minM) out.duration = minM[1];
+  }
   const dtM = flat.match(/(\w{3}),?\s*(\w{3})\s+(\d{1,2}),\s*(\d{4})\s*(?:at)?\s*(\d{1,2}):(\d{2})\s*([AP]M)/i);
   if (dtM) {
     const monthIdx = MONTH_MAP[dtM[2].toLowerCase().slice(0, 3)];
