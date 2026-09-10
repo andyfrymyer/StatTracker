@@ -58,5 +58,19 @@ check("a round duration stays exact", M.parseDribbleScreenshot(UNKNOWN).duration
 const SHOOT = M.flattenOcrText("Shootaround ATTEMPTS 250 MAKES 112 SWISHES 42 Retake Class Duration 20:00");
 check("shooting still wins over the recap words", M.detectScreenshotType(SHOOT) === "shooting", M.detectScreenshotType(SHOOT));
 
+// DribbleUp gives one screenshot per session, so that single screen has to
+// carry every field a session stores. Read the stored fields out of the app
+// rather than listing them here: if a new one is ever added, this fails until
+// the parser can fill it or it is knowingly left manual.
+const html = fs.readFileSync(P("../index.html"), "utf8");
+const entry = html.slice(html.indexOf("const d = state.dribbling;"));
+const stored = [...entry.slice(0, entry.indexOf("};")).matchAll(/^\s{6}(\w+):/gm)].map((m) => m[1]);
+// id is generated; notes is free text she types; time and date live on the
+// session rather than the drill, and the parser fills both.
+const fromScreen = { ...r, time: r.time, date: r.date, type: "dribbling", id: "generated", notes: "manual" };
+const missing = stored.filter((k) => fromScreen[k] === null || fromScreen[k] === undefined);
+check("one screenshot fills every stored field", missing.length === 0, [missing, stored]);
+check("and the two required ones are among them", r.points !== null && r.reps !== null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
